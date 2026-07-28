@@ -10,9 +10,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+ENV_KEY="${BUTLER_API_KEY:-}"
 [ -f .env ] && { set -a; . ./.env; set +a; }
-: "${ITCH_TARGET:?нет ITCH_TARGET в .env}"
-: "${BUTLER_API_KEY:?нет BUTLER_API_KEY в .env}"
+[ -n "$ENV_KEY" ] && BUTLER_API_KEY="$ENV_KEY"
+
+ITCH_TARGET="${ITCH_TARGET:-$(node -p "require('./package.json').itch?.target ?? ''")}"
+: "${ITCH_TARGET:?нет itch.target в package.json}"
+: "${BUTLER_API_KEY:?нет ключа: положите BUTLER_API_KEY в .env или в окружение}"
 
 export LD_LIBRARY_PATH="$ROOT/.tools/butler${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$ROOT/.tools/butler/butler" status "$ITCH_TARGET"

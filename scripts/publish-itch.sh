@@ -9,7 +9,9 @@
 #   npm run publish:itch            обычная заливка
 #   npm run publish:itch -- --dry   всё, кроме самой отправки
 #
-# Требует .env с BUTLER_API_KEY и ITCH_TARGET (см. сам файл .env).
+# Адрес игры и канал берутся из package.json → itch: это не секреты, а свойства
+# проекта, и на новой машине настраивать их не надо. Нужен только ключ — из
+# .env, из окружения или из ~/.config/itch после `butler login`.
 
 set -euo pipefail
 
@@ -18,17 +20,16 @@ cd "$ROOT"
 
 BUTLER_DIR="$ROOT/.tools/butler"
 BUTLER="$BUTLER_DIR/butler"
-CHANNEL="html5"
 DRY=""
 [ "${1:-}" = "--dry" ] && DRY="1"
 
 die() { echo "✗ $*" >&2; exit 1; }
 
 # ── что нужно на входе ───────────────────────────────────────────
-# Значения из окружения важнее файла: так можно разово залить в другую цель
-# (ITCH_TARGET=... npm run publish:itch) и так же работает CI, где .env нет.
-ENV_TARGET="${ITCH_TARGET:-}"
+# Значение из окружения важнее файла: так работает CI, где .env нет вовсе,
+# и так же можно разово подставить ключ из менеджера паролей.
 ENV_KEY="${BUTLER_API_KEY:-}"
+ENV_TARGET="${ITCH_TARGET:-}"
 
 if [ -f .env ]; then
   set -a
@@ -37,11 +38,16 @@ if [ -f .env ]; then
   set +a
 fi
 
-[ -n "$ENV_TARGET" ] && ITCH_TARGET="$ENV_TARGET"
 [ -n "$ENV_KEY" ] && BUTLER_API_KEY="$ENV_KEY"
 
-[ -n "${BUTLER_API_KEY:-}" ] || die "в .env нет BUTLER_API_KEY (itch.io/user/settings/api-keys)."
-[ -n "${ITCH_TARGET:-}" ] || die "в .env нет ITCH_TARGET — это <логин>/<адрес-страницы> с itch.io.
+read_pkg() { node -p "require('./package.json').itch?.$1 ?? ''"; }
+ITCH_TARGET="${ENV_TARGET:-$(read_pkg target)}"
+CHANNEL="$(read_pkg channel)"
+CHANNEL="${CHANNEL:-html5}"
+
+[ -n "${BUTLER_API_KEY:-}" ] || die "нет ключа. Положите BUTLER_API_KEY в .env, передайте
+  в окружении или выполните один раз: .tools/butler/butler login"
+[ -n "$ITCH_TARGET" ] || die "в package.json нет itch.target — это <логин>/<адрес-страницы>.
   Страницу нужно создать руками на itch.io/game/new: API их заводить не умеет."
 
 # butler ждёт «логин/игра», но со страницы естественнее скопировать полный

@@ -35,16 +35,16 @@
 не рябит. На меньшем прибор обрежется, на большем — останется того же размера
 с полями, потому что следующий целый шаг требует высоты от 1292 px.
 
-Адрес страницы идёт в `.env` в виде «логин/игра». Полный URL скрипт тоже
-понимает и приводит сам:
+Адрес страницы лежит в `package.json → itch.target` в виде «логин/игра» —
+это не секрет, а свойство проекта:
 
-```
-ITCH_TARGET=deemkeen/gribotchi
+```json
+"itch": { "target": "deemkeen/gribotchi", "channel": "html5" }
 ```
 
 Страница: https://deemkeen.itch.io/gribotchi
 
-Дальше — `npm run publish:itch`.
+Релиз — `npm version patch && git push --follow-tags`, дальше GitHub Actions.
 
 ---
 

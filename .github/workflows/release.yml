@@ -1,0 +1,56 @@
+name: Релиз на itch.io
+
+# Ключ живёт единственным экземпляром — в секретах репозитория, и не оседает
+# ни на одном компьютере. Релиз с любой машины делается пушем тега.
+on:
+  push:
+    tags: ['v*']
+  # Запасной ручной запуск: тег уже есть, а сборку надо перевыложить.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия, например 0.1.2'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # Версия внутри игры берётся из package.json и попадает в сводку по СОС
+      # и в имя кеша service worker. Если она разойдётся с тегом, игрок будет
+      # называть в отчёте не ту версию, что стоит на itch, — поэтому сверяем
+      # до сборки, а не после.
+      - name: Сверить версию с тегом
+        run: |
+          tag="${{ github.event.inputs.version || github.ref_name }}"
+          tag="${tag#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::тег $tag не совпадает с package.json ($pkg) — поднимите версию и повторите"
+            exit 1
+          fi
+          echo "версия $pkg"
+
+      - name: Поставить butler
+        run: ./scripts/get-butler.sh
+
+      # Скрипт тот же, что и локально: типы, тесты, сборка, заливка.
+      # Одна дорога вместо двух — значит CI не может разойтись с ручным релизом.
+      - name: Собрать и выложить
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: npm run publish:itch
+
+      - name: Показать состояние сборки
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: npm run itch:status

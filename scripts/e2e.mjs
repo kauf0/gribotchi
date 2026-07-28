@@ -312,6 +312,45 @@ async function main() {
     const back = diffRatio(onGame, await evaluate(cdp, LCD_FINGERPRINT))
     check('повторный СОС возвращает к банке', back < 0.1, `отличие от исходного ${(back * 100).toFixed(0)}%`)
 
+    // «Отойти по делам»: прибор гаснет, а время идёт дальше — на этом стоит
+    // вся игра, и кнопка не должна оказаться паузой.
+    const beforeLeave = await evaluate(cdp, READ_SAVE)
+    const playing = await evaluate(cdp, LCD_FINGERPRINT)
+    await evaluate(cdp, `document.querySelector('.leave').click()`)
+    await sleep(700)
+    const parked = diffRatio(playing, await evaluate(cdp, LCD_FINGERPRINT))
+    check('«отойти по делам» гасит прибор', parked > 0.2, `изменилось ${(parked * 100).toFixed(0)}% экрана`)
+
+    const notesParked = await evaluate(cdp, `window.__notes`)
+    await sleep(1200)
+    check('после ухода музыка молчит', (await evaluate(cdp, `window.__notes`)) === notesParked)
+
+    // Симуляция при этом продолжает жить. Увидеть это за секунды можно только
+    // ускорителем: шаг симуляции — реальная минута, и без разгона возраст
+    // за время прогона просто не сдвинется. В собранной версии панели нет,
+    // поэтому там проверка честно пропускается.
+    if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+      console.log('  ––   ход времени с погашенным прибором: пропущено (нужен ускоритель из панели)')
+    } else {
+      const speed = (m) =>
+        `[...document.querySelectorAll('.dbg button')].find((b) => b.textContent === '×${m}').click()`
+      await evaluate(cdp, speed(600))
+      await sleep(3000)
+      await evaluate(cdp, speed(1))
+      const afterLeave = await evaluate(cdp, READ_SAVE)
+      check(
+        'время идёт и с погашенным прибором — это не пауза',
+        afterLeave.ageMs > beforeLeave.ageMs,
+        `${Math.round(beforeLeave.ageMs / 60000)} → ${Math.round(afterLeave.ageMs / 60000)} игровых минут`,
+      )
+    }
+
+    // И включается обратно тем же СОС.
+    await realClick(cdp, ...(await centerOf(cdp, 2)))
+    await sleep(3800)
+    const resumed = diffRatio(playing, await evaluate(cdp, LCD_FINGERPRINT))
+    check('прибор включается обратно', resumed < 0.25, `отличие от прежнего ${(resumed * 100).toFixed(0)}%`)
+
     // Динамик работает переключателем звука; настройка должна пережить сеанс.
     // Всё, что опирается на счётчики звука, обязано стоять ДО перезагрузки:
     // она сбрасывает и счётчики, и подмену прототипов.

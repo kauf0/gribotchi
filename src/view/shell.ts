@@ -10,7 +10,7 @@
  */
 
 import { GEOM, SKINS, type SkinKey } from '../content/tokens'
-import { BRAND, BUTTONS } from '../content/strings'
+import { BRAND, BUTTONS, LEAVE } from '../content/strings'
 import { W, H } from './lcd'
 
 export type ButtonId = 'A' | 'B' | 'C'
@@ -28,6 +28,8 @@ export type Shell = {
   setCaption(text: string, opacity: number): void
   /** Финальная плашка ролика. */
   setTitleCard(opacity: number): void
+  /** Надпись «отойти по делам» — прячется на время ролика. */
+  setLeaveVisible(visible: boolean): void
   /** Текущий множитель: device-пикселей на единицу прибора. */
   scale(): number
 }
@@ -82,10 +84,12 @@ export type ShellHandlers = {
   onPress: (id: ButtonId) => void
   /** Нажатие на динамик — переключатель звука. */
   onSpeaker: () => void
+  /** «Отойти по делам»: выключить прибор и выйти из полноэкранного режима. */
+  onLeave: () => void
 }
 
 export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
-  const { onPress, onSpeaker } = handlers
+  const { onPress, onSpeaker, onLeave } = handlers
   const room = el('div', 'room')
   room.append(el('div', 'room__cloth'))
 
@@ -186,7 +190,15 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
   titleTag.textContent = BRAND.tagline
   titleCard.append(titleName, titleJp, titleTag)
 
-  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard)
+  // Надпись лежит на столе рядом с прибором, а не на корпусе: это действие
+  // игрока, а не функция игрушки. Заодно на телефоне, где itch открывает игру
+  // во весь экран, она оказывается единственным очевидным выходом.
+  const leave = el('button', 'leave')
+  leave.type = 'button'
+  leave.textContent = LEAVE
+  leave.addEventListener('click', onLeave)
+
+  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard, leave)
 
   let currentScale = 1
   let cssScale = 1
@@ -251,6 +263,7 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
       shakeY = y
       applyTransform()
     },
+    setLeaveVisible: (visible) => leave.classList.toggle('is-hidden', !visible),
     setMuted: (muted) => {
       speaker.classList.toggle('is-muted', muted)
       sound.classList.toggle('is-muted', muted)

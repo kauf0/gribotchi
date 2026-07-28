@@ -340,6 +340,46 @@ body {
   box-shadow: 0 0 16px #e05a3a;
 }
 
+/*
+ * «Отойти по делам». Лежит на столе, а не на корпусе: это решение игрока,
+ * а не функция игрушки. Приглушена, чтобы не спорить с прибором, но на
+ * телефоне в полноэкранном режиме оказывается единственным очевидным выходом,
+ * поэтому прячется только на время ролика.
+ */
+.leave {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 15;
+  padding: 7px 16px;
+  border: 1px solid rgba(217, 201, 163, 0.22);
+  border-radius: 999px;
+  background: rgba(12, 13, 8, 0.45);
+  color: #d9c9a3;
+  font-family: 'PT Sans Narrow', sans-serif;
+  font-size: 15px;
+  letter-spacing: 2px;
+  opacity: 0.5;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 0.15s;
+}
+
+.leave:hover,
+.leave:focus-visible {
+  opacity: 1;
+}
+
+.leave:focus-visible {
+  outline: 2px solid #f0e4cd;
+  outline-offset: 3px;
+}
+
+.leave.is-hidden {
+  display: none;
+}
+
 /* ── аттракт-режим: субтитры и финальная плашка ───────────────── */
 
 .caption-scrim {

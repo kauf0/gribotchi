@@ -81,7 +81,7 @@ let attractEndedAt = -Infinity
 const restored = load(clock.now())
 let state: GameState = restored.state
 
-const shell = mountShell(root, { onPress: handlePress, onSpeaker: toggleSound })
+const shell = mountShell(root, { onPress: handlePress, onSpeaker: toggleSound, onLeave: leaveForNow })
 const lcd = new Lcd(shell.canvas, skin)
 shell.setMuted(!audio.on)
 
@@ -169,10 +169,45 @@ shell.setScreenOn(false)
  * «Он считал дни. Все.» Реплика ждёт конца загрузки: сказанная при открытии
  * страницы, она бы истекла, пока игрок разглядывает экран запуска.
  */
-const awayMessage =
+let awayMessage =
   !restored.fresh && restored.awayMs > AWAY_WORTH_MENTION_MS
     ? wereAway(Math.floor(restored.awayMs / 3600_000))
     : null
+
+/** Когда игрок выключил прибор кнопкой «отойти по делам». */
+let leftAt = 0
+
+/**
+ * «Отойти по делам»: гасит прибор и выходит из полноэкранного режима.
+ *
+ * Время НЕ останавливается — на том, что гриб живёт без владельца, держится
+ * вся игра. Это выключатель игрушки, а не паузы: экран гаснет, музыка смолкает,
+ * а вернувшись, вы застаёте последствия и слышите, сколько вас не было.
+ */
+function leaveForNow(): void {
+  const now = clock.now()
+  persist(now, true)
+
+  leftAt = now
+  phase = 'start'
+  ui = 'game'
+  prevSignals = null
+  // Ролик после осознанного ухода включаться не должен: игрок не «завис»,
+  // он ушёл. Аттракт вернётся после следующего касания.
+  lastInputAt = Number.POSITIVE_INFINITY
+  attractSince = null
+
+  // Полноэкранный режим на itch включает родительская страница, и выйти из
+  // него изнутри врезки удаётся не всегда. Гасим прибор в любом случае —
+  // это главное, а полноэкранный выход по возможности.
+  const doc = document as Document & { webkitExitFullscreen?: () => void }
+  try {
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else doc.webkitExitFullscreen?.()
+  } catch {
+    // не дали — не страшно, прибор всё равно выключен
+  }
+}
 
 function applySkin(next: SkinKey): void {
   skin = next
@@ -226,6 +261,12 @@ function handlePress(id: ButtonId): void {
       return
 
     case 'power-on':
+      // Вернулись после «отойти по делам» — прибор посчитает, сколько прошло.
+      if (leftAt) {
+        const away = Math.max(0, now - leftAt)
+        if (away > AWAY_WORTH_MENTION_MS) awayMessage = wereAway(Math.floor(away / 3600_000))
+        leftAt = 0
+      }
       phase = 'boot'
       bootStartedAt = performance.now()
       audio.unlock()
@@ -355,6 +396,7 @@ function frame(ms: number): void {
   if (phase === 'boot' && (ms - bootStartedAt) / 1000 >= BOOT.done) {
     phase = 'game'
     if (awayMessage) fx.say(awayMessage, now)
+    awayMessage = null
   }
 
   const wasAlive = state.alive
@@ -385,6 +427,7 @@ function frame(ms: number): void {
     shell.setShake(0, 0)
     shell.setCaption(demo.caption, demo.captionOpacity)
     shell.setTitleCard(demo.title)
+    shell.setLeaveVisible(false)
     audio.update(demo.screen.mood, !!demo.screen.alarm, now)
     requestAnimationFrame(frame)
     return
@@ -395,6 +438,7 @@ function frame(ms: number): void {
   shell.setLed(ledOn(s, animClock))
   shell.setScreenOn(s.mode !== 'off')
   shell.setShake(...fx.shakeOffset(now))
+  shell.setLeaveVisible(true)
   audio.update(s.mood, !!s.alarm, now)
 
   requestAnimationFrame(frame)

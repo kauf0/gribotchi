@@ -10,7 +10,8 @@
  */
 
 import { GEOM, SKINS, type SkinKey } from '../content/tokens'
-import { BRAND, BUTTONS, LEAVE } from '../content/strings'
+import { BRAND, BUTTONS, INSTALL, LEAVE } from '../content/strings'
+import type { InstallOffer } from '../ui/install'
 import { W, H } from './lcd'
 
 export type ButtonId = 'A' | 'B' | 'C'
@@ -30,6 +31,11 @@ export type Shell = {
   setTitleCard(opacity: number): void
   /** Надпись «отойти по делам» — прячется на время ролика. */
   setLeaveVisible(visible: boolean): void
+  /**
+   * Предложение поставить прибор на устройство. Появляется только там, где
+   * установка возможна: на своей странице, но не во врезке itch.
+   */
+  setInstall(offer: InstallOffer): void
   /** Текущий множитель: device-пикселей на единицу прибора. */
   scale(): number
 }
@@ -86,10 +92,12 @@ export type ShellHandlers = {
   onSpeaker: () => void
   /** «Отойти по делам»: выключить прибор и выйти из полноэкранного режима. */
   onLeave: () => void
+  /** Нажали на предложение установки. */
+  onInstall: () => void
 }
 
 export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
-  const { onPress, onSpeaker, onLeave } = handlers
+  const { onPress, onSpeaker, onLeave, onInstall } = handlers
   const room = el('div', 'room')
   room.append(el('div', 'room__cloth'))
 
@@ -198,7 +206,14 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
   leave.textContent = LEAVE
   leave.addEventListener('click', onLeave)
 
-  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard, leave)
+  // Предложение установки — сверху, чтобы не спорить с «отойти по делам»
+  // внизу. Появляется редко и один раз, поэтому места под него не резервируем.
+  const install = el('button', 'install')
+  install.type = 'button'
+  install.classList.add('is-hidden')
+  install.addEventListener('click', onInstall)
+
+  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard, leave, install)
 
   let currentScale = 1
   let cssScale = 1
@@ -264,6 +279,13 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
       applyTransform()
     },
     setLeaveVisible: (visible) => leave.classList.toggle('is-hidden', !visible),
+    setInstall: (offer) => {
+      install.classList.toggle('is-hidden', !offer.show)
+      if (!offer.show) return
+      install.textContent = offer.mode === 'ios-hint' ? INSTALL.ios : INSTALL.action
+      // Подсказку для iOS нажимать незачем — она только объясняет.
+      install.classList.toggle('is-hint', offer.mode === 'ios-hint')
+    },
     setMuted: (muted) => {
       speaker.classList.toggle('is-muted', muted)
       sound.classList.toggle('is-muted', muted)

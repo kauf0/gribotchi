@@ -5,9 +5,57 @@
 
 import type { GameState } from '../sim/state'
 import { dayOf, diagnose } from '../sim/derive'
-import { DAUGHTER_MIN_GROWTH } from '../sim/balance'
-import { REPORT, objectNo, dayNo } from '../content/strings'
+import { DAUGHTER_MIN_GROWTH, TEA_KEYS } from '../sim/balance'
+import { BUTTONS, INCIDENT, JOURNAL, POUR, REPORT, objectNo, dayNo } from '../content/strings'
+import type { JournalEntry } from '../sim/journal'
+import type { IncidentKind } from '../sim/balance'
 import type { Report } from './screenState'
+
+/** Порядок кнопок прибора — тот же, что у сортов и ответов в balance.ts. */
+const BUTTON_ORDER = [BUTTONS.A, BUTTONS.B, BUTTONS.C] as const
+
+/**
+ * Запись журнала словами. Симуляция хранит событие по существу, формулировку
+ * подбирают здесь — поэтому текст можно править, не трогая чужие сохранения.
+ *
+ * Час подачи берётся из метки времени именно тут: Date живёт в слое вида,
+ * а симуляция о часовых поясах не знает и знать не должна.
+ */
+export function journalLine(e: JournalEntry): string {
+  switch (e.kind) {
+    case 'batch':
+      return JOURNAL.batch(e.generation, e.day, e.tea ? POUR.batch[e.tea] : null, JOURNAL.grade[e.grade ?? 'second'])
+    case 'death':
+      return JOURNAL.death(e.generation, e.day, !!e.daughter)
+    case 'turned-away':
+      return JOURNAL.turnedAway(e.day)
+    case 'full-grown':
+      return JOURNAL.fullGrown(e.day)
+    case 'absence':
+      return JOURNAL.absence(e.hours ?? 0)
+    case 'absence-record':
+      return JOURNAL.absenceRecord(e.hours ?? 0)
+    case 'night-pour':
+      return JOURNAL.nightPour(clockOf(e.at))
+    case 'forgiven':
+      return JOURNAL.forgiven(e.day)
+    case 'overfed':
+      return JOURNAL.overfed(e.day)
+    case 'incident':
+      return e.incident === undefined
+        ? ''
+        : JOURNAL.incident(e.day, INCIDENT[e.incident].name, INCIDENT[e.incident].done[e.answer ?? 0])
+    // Запись из сохранения, сделанного до перехода на события: формулировка
+    // в ней уже готовая, и другой у нас нет.
+    default:
+      return e.text ?? ''
+  }
+}
+
+const clockOf = (at: number): string => {
+  const d = new Date(at)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 /** Сводка аварийной службы: вердикт по обстановке плюс журнал наблюдений. */
 export function summary(s: GameState, scroll: number): Report {
@@ -18,10 +66,36 @@ export function summary(s: GameState, scroll: number): Report {
     lines.push(REPORT.empty)
   } else {
     // Свежие записи сверху — их и хотят видеть.
-    for (const entry of [...s.journal].reverse()) lines.push(`· ${entry.text}`)
+    for (const entry of [...s.journal].reverse()) lines.push(`· ${journalLine(entry)}`)
   }
 
   return { title: `${REPORT.title} · ${objectNo(s.generation)}`, lines, scroll, hint: REPORT.hint }
+}
+
+/**
+ * Бланк подачи: три кнопки прибора на время становятся тремя сортами.
+ * Отмены нет — вместо неё в подсказке идёт обратный отсчёт, чтобы
+ * самозакрытие бланка читалось как правило прибора, а не как сбой.
+ */
+export function pourBlank(secondsLeft: number): Report {
+  const lines: string[] = [POUR.prompt, '']
+  for (const [i, key] of TEA_KEYS.entries()) {
+    lines.push(`${BUTTON_ORDER[i]} · ${POUR.name[key]}`)
+    lines.push(`   ${POUR.note[key]}`)
+  }
+  return { title: POUR.title, lines, scroll: 0, hint: POUR.closing(Math.max(0, Math.ceil(secondsLeft))) }
+}
+
+/**
+ * Бланк происшествия. Та же раскладка, что у сводки и подачи: заголовок,
+ * строки, полоса подсказки. Три кнопки прибора становятся тремя ответами —
+ * приём уже привычный игроку по бланку подачи.
+ */
+export function incidentBlank(kind: IncidentKind): Report {
+  const card = INCIDENT[kind]
+  const lines: string[] = [INCIDENT.intro, ...card.lines, '']
+  card.answers.forEach((label, i) => lines.push(`${BUTTON_ORDER[i]} · ${label}`))
+  return { title: INCIDENT.title, lines, scroll: 0, hint: INCIDENT.hint }
 }
 
 /** Извещение о гибели. */

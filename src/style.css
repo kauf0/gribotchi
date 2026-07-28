@@ -376,6 +376,43 @@ body {
   outline-offset: 3px;
 }
 
+.install {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  z-index: 15;
+  max-width: calc(100vw - 24px);
+  padding: 7px 16px;
+  border: 1px solid rgba(217, 201, 163, 0.28);
+  border-radius: 999px;
+  background: rgba(12, 13, 8, 0.55);
+  color: #d9c9a3;
+  font-family: 'PT Sans Narrow', sans-serif;
+  font-size: 15px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  opacity: 0.72;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 0.15s;
+}
+
+.install:hover,
+.install:focus-visible {
+  opacity: 1;
+}
+
+/* Подсказка для iOS ничего не запускает — только объясняет, куда нажимать.
+   На узком экране ей позволено перенестись: две строки лучше, чем срез. */
+.install.is-hint {
+  cursor: default;
+  letter-spacing: 1px;
+  white-space: normal;
+  text-align: center;
+}
+
+.install.is-hidden,
 .leave.is-hidden {
   display: none;
 }

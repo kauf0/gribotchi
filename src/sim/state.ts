@@ -4,18 +4,15 @@
  * нельзя восстановить из времени и истории.
  */
 
+import { TEA_KEYS, type TeaKey } from './balance'
+import type { JournalEntry } from './journal'
+
+export type { JournalEntry } from './journal'
+
 export const SAVE_VERSION = 1
 
 /** Насколько «в прошлое» сдвинуты кулдауны у новорождённого гриба. */
 const COOLDOWN_HEADSTART_MS = 60 * 60 * 1000
-
-export type JournalEntry = {
-  /** Реальное время события — по нему запись сортируется и датируется. */
-  at: number
-  generation: number
-  day: number
-  text: string
-}
 
 export type GameState = {
   version: typeof SAVE_VERSION
@@ -52,6 +49,25 @@ export type GameState = {
   /** Множитель накопления обиды: наследуется и слабеет с поколениями. */
   resentFactor: number
 
+  /**
+   * Сколько раз чем поили за жизнь этого поколения. Из этого счётчика
+   * складывается сорт партии при розливе: цель аккуратного игрока собирается
+   * из дневных решений, а не выдаётся отдельной механикой.
+   */
+  poured: Record<TeaKey, number>
+
+  /**
+   * Самая долгая отлучка владельца, мс. Принадлежит игроку, а не грибу,
+   * поэтому наследуется поколениями: рекорд отсутствия сбрасывать не за что.
+   */
+  longestAwayMs: number
+
+  /**
+   * Когда прибор в последний раз докладывал о происшествии. Держит паузу,
+   * чтобы возвращение не превращалось в обязательную сводку убытков.
+   */
+  lastIncidentAt: number
+
   journal: JournalEntry[]
 }
 
@@ -60,6 +76,8 @@ export type NewLifeOpts = {
   growth?: number
   resentFactor?: number
   journal?: JournalEntry[]
+  longestAwayMs?: number
+  lastIncidentAt?: number
 }
 
 export function createState(now: number, opts: NewLifeOpts = {}): GameState {
@@ -83,8 +101,15 @@ export function createState(now: number, opts: NewLifeOpts = {}): GameState {
     fedAtAge: 0,
     stressUntil: 0,
     resentFactor: opts.resentFactor ?? 1,
+    poured: emptyPoured(),
+    longestAwayMs: opts.longestAwayMs ?? 0,
+    lastIncidentAt: opts.lastIncidentAt ?? 0,
     journal: opts.journal ?? [],
   }
 }
 
 export const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
+
+/** Счётчик поданного с нуля — он же запасное значение при подъёме сохранений. */
+export const emptyPoured = (): Record<TeaKey, number> =>
+  Object.fromEntries(TEA_KEYS.map((k) => [k, 0])) as Record<TeaKey, number>

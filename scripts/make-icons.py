@@ -129,6 +129,9 @@ def main() -> None:
         print(f"  icon-{size}.png")
     draw_icon(512, maskable=True).save(os.path.join(OUT, "icon-maskable-512.png"))
     print("  icon-maskable-512.png")
+    # iOS берёт свою иконку отдельным тегом и своего размера.
+    draw_icon(180, maskable=False).save(os.path.join(OUT, "icon-180.png"))
+    print("  icon-180.png")
     # Фавиконка: тот же рисунок, просто мельче.
     draw_icon(64, maskable=False).save(os.path.join(OUT, "favicon.png"))
     print("  favicon.png")

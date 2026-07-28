@@ -7,8 +7,9 @@
  */
 
 import { advance } from './tick'
-import { createState, SAVE_VERSION, type GameState } from './state'
-import { CLEAN_STRESS_MS } from './balance'
+import { createState, emptyPoured, SAVE_VERSION, type GameState } from './state'
+import { trim, type JournalEntry } from './journal'
+import { CLEAN_STRESS_MS, TEA_KEYS, type TeaKey } from './balance'
 
 const KEY = 'gribochi.save.v1'
 
@@ -96,6 +97,51 @@ function migrate(parsed: unknown, now: number): GameState | null {
   }
 
   /**
+   * Счётчик поданных сортов появился позже сохранений. Его нет — значит история
+   * подач неизвестна, и это честные нули: партия просто выйдет без сорта.
+   * Ключи пересобираются поимённо, чтобы битое или чужое поле не утекло
+   * в подсчёт преобладающего сорта.
+   */
+  const savedPoured = (raw.poured ?? {}) as Partial<Record<TeaKey, unknown>>
+  merged.poured = emptyPoured()
+  for (const key of TEA_KEYS) {
+    const n = savedPoured[key]
+    if (typeof n === 'number' && Number.isFinite(n) && n > 0) merged.poured[key] = Math.floor(n)
+  }
+
+  /**
+   * Рекорд отсутствия появился вместе с наблюдениями. Прежним сохранениям
+   * взять его неоткуда: отлучки до обновления никто не считал. Ноль означает
+   * «сравнивать не с чем», и первая же долгая отлучка честно станет рекордом.
+   */
+  if (typeof raw.longestAwayMs !== 'number' || !Number.isFinite(raw.longestAwayMs)) {
+    merged.longestAwayMs = 0
+  }
+  // Пауза происшествий: нуля достаточно — прибор просто доложит при первом же
+  // долгом возвращении, а не промолчит непонятно почему.
+  if (typeof raw.lastIncidentAt !== 'number' || !Number.isFinite(raw.lastIncidentAt)) {
+    merged.lastIncidentAt = 0
+  }
+
+  /**
+   * Журнал. Записи, сделанные до перехода на события, вида не имеют — у них
+   * есть готовый text, и вид рендерит их по нему. Выбрасываем только то, что
+   * нечем показать: остальное — чужая неделя ухода.
+   */
+  merged.journal = Array.isArray(raw.journal)
+    ? raw.journal.filter(
+        (e): e is JournalEntry =>
+          typeof e === 'object' &&
+          e !== null &&
+          typeof (e as JournalEntry).at === 'number' &&
+          (typeof (e as JournalEntry).kind === 'string' || typeof (e as JournalEntry).text === 'string'),
+      )
+    : []
+  // Предел журнала появился только сейчас: у долго игравших он успел вырасти
+  // без него, и подрезать надо на загрузке.
+  merged.journal = trim(merged.journal)
+
+  /**
    * Метки времени из будущего оставлять нельзя. Их пишет отладочный ускоритель
    * (покормили при ×600 — и lastFedAt уехал на часы вперёд) и переведённые
    * системные часы. После перезагрузки часы возвращаются к настоящим, и игра
@@ -113,6 +159,8 @@ function migrate(parsed: unknown, now: number): GameState | null {
   merged.lastFedAt = past(merged.lastFedAt, fresh.lastFedAt)
   merged.lastCleanedAt = past(merged.lastCleanedAt, fresh.lastCleanedAt)
   merged.deathAt = merged.deathAt === null ? null : past(merged.deathAt, now)
+  // Метка из будущего заперла бы происшествия на полсуток вперёд.
+  merged.lastIncidentAt = past(merged.lastIncidentAt, 0)
   // Стресс после промывки законно смотрит вперёд, но не дальше своей длины.
   merged.stressUntil = Math.min(
     typeof merged.stressUntil === 'number' && Number.isFinite(merged.stressUntil) ? merged.stressUntil : 0,

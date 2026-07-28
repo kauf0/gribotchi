@@ -36,9 +36,15 @@ export type UrlSeed = {
   patch: Partial<ScreenState>
   sim?: SimSeed
   /** Какой экран открыть поверх игры. */
-  open?: 'report'
+  open?: 'report' | 'pour' | 'incident'
   /** Запустить ролик сразу, с указанной секунды: ?attract=20. */
   attract?: number
+  /**
+   * Показать предложение установки: ?install=prompt или ?install=ios.
+   * Событие beforeinstallprompt в headless-браузере не приходит, а посмотреть
+   * на надпись и проверить её расположение надо.
+   */
+  install?: 'prompt' | 'ios-hint'
   /**
    * Через сколько секунд простоя прибор сам показывает ролик: ?idle=3.
    * В игре это минута, и ждать её в каждом прогоне теста никто не станет.
@@ -92,9 +98,14 @@ export function readUrlSeed(search: string): UrlSeed {
   }
   if (flag(q, 'sim.dead')) sim.dead = true
 
-  const open = q.get('open') === 'report' ? ('report' as const) : undefined
+  const openRaw = q.get('open')
+  const open =
+    openRaw === 'report' || openRaw === 'pour' || openRaw === 'incident' ? openRaw : undefined
   const attract = q.has('attract') ? (num(q, 'attract') ?? 0) : undefined
   const idle = num(q, 'idle')
+  const installRaw = q.get('install')
+  const install =
+    installRaw === 'prompt' ? ('prompt' as const) : installRaw === 'ios' ? ('ios-hint' as const) : undefined
 
   return {
     manual: q.has('manual') || Object.keys(patch).length > 0,
@@ -103,6 +114,7 @@ export function readUrlSeed(search: string): UrlSeed {
     patch,
     sim: Object.keys(sim).length > 0 ? sim : undefined,
     open,
+    install,
     attract,
     idleBeforeAttract: idle !== undefined && idle >= 0 ? idle * 1000 : undefined,
   }

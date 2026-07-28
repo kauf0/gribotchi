@@ -1,7 +1,12 @@
-name: Релиз на itch.io
+name: Релиз
 
-# Ключ живёт единственным экземпляром — в секретах репозитория, и не оседает
-# ни на одном компьютере. Релиз с любой машины делается пушем тега.
+# Игра выложена в двух местах: врезкой на itch и отдельной страницей на
+# GitHub Pages, которую можно поставить как приложение. Разложить их должен
+# ОДИН прогон одной сборкой — иначе однажды на одном адресе окажется версия
+# свежее, чем на другом, и отчёты об ошибках перестанут сходиться.
+#
+# Ключ butler живёт единственным экземпляром — в секретах репозитория, и не
+# оседает ни на одном компьютере. Релиз с любой машины делается пушем тега.
 on:
   push:
     tags: ['v*']
@@ -12,9 +17,24 @@ on:
         description: 'Версия, например 0.1.2'
         required: true
 
+# pages и id-token нужны выкладке на GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Два релиза подряд не должны обгонять друг друга и разложить разные версии
+# по двум адресам.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,12 +65,34 @@ jobs:
 
       # Скрипт тот же, что и локально: типы, тесты, сборка, заливка.
       # Одна дорога вместо двух — значит CI не может разойтись с ручным релизом.
-      - name: Собрать и выложить
+      - name: Собрать и выложить на itch
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: npm run publish:itch
+
+      # Дальше идёт ТА ЖЕ папка dist, что уже уехала на itch: ни пересборки,
+      # ни второго набора проверок. Байт в байт одно и то же в двух местах.
+      - name: Подготовить Pages
+        uses: actions/configure-pages@v5
+
+      - name: Отправить сборку
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Выложить на GitHub Pages
+        id: pages
+        uses: actions/deploy-pages@v4
 
       - name: Показать состояние сборки
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: npm run itch:status
+
+      # Адрес itch берём из package.json — там же, откуда его берёт butler,
+      # чтобы в итоге не оказалось ссылки на чужую страницу.
+      - name: Итог
+        run: |
+          target="$(node -p "require('./package.json').itch.target")"
+          echo "врезка: https://${target%%/*}.itch.io/${target##*/}"
+          echo "прибор: ${{ steps.pages.outputs.page_url }}"

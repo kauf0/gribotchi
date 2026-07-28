@@ -7,10 +7,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { advance, step } from '../src/sim/tick'
-import { clamp01, createState, SAVE_VERSION, type GameState } from '../src/sim/state'
+import { clamp01, createState, emptyPoured, SAVE_VERSION, type GameState } from '../src/sim/state'
 import { bottle, clean, feed, nextGeneration, sos } from '../src/sim/actions'
-import { canBottle, dayOf, moodOf, overdueDays } from '../src/sim/derive'
+import { canBottle, dayOf, dominantTea, moodOf, overdueDays } from '../src/sim/derive'
 import { load, save } from '../src/sim/persist'
+import { journalLine } from '../src/view/reports'
+import { incidentFor } from '../src/sim/incidents'
 import * as B from '../src/sim/balance'
 
 const T0 = 1_700_000_000_000
@@ -122,12 +124,14 @@ describe('смена поколений', () => {
   })
 
   it('качество партии зависит от чистоты среды', () => {
-    const quality = (mold: number) =>
-      bottle({ ...createState(T0), growth: 1, mold }, T0).state.journal[0].text
+    // Симуляция хранит ступень, слово подбирает вид — проверяем обе стороны.
+    const grade = (mold: number) =>
+      bottle({ ...createState(T0), growth: 1, mold }, T0).state.journal[0]
 
-    expect(quality(0.05)).toContain('ВЫСШЕЕ')
-    expect(quality(0.3)).toContain('ПЕРВОЕ')
-    expect(quality(0.7)).toContain('ВТОРОЕ')
+    expect(grade(0.05).grade).toBe('top')
+    expect(grade(0.3).grade).toBe('first')
+    expect(grade(0.7).grade).toBe('second')
+    expect(journalLine(grade(0.05))).toContain('ВЫСШЕЕ')
   })
 
   it('новое поколение начинает здоровым и живым', () => {
@@ -251,6 +255,71 @@ describe('сохранение', () => {
     const back = load(T0, store).state
     expect(dayOf(back)).toBe(10)
     expect(overdueDays(back)).toBe(3)
+  })
+
+  it('сохранение без счётчика сортов открывается без потерь', () => {
+    // Счётчик появился позже; у прежних сохранений история подач неизвестна,
+    // и это честные нули. Отбросить такое сохранение значило бы молча убить
+    // гриб, которого растили несколько дней.
+    const store = memory()
+    const old = { ...createState(T0), generation: 3, growth: 0.6, food: 0.5 } as Partial<GameState>
+    old.bornAt = T0 - gameDays(20)
+    old.ageMs = gameDays(20)
+    old.journal = [{ at: T0, generation: 2, day: 14, text: 'ПАРТИЯ №2 · ДЕНЬ 14 · КАЧЕСТВО ПЕРВОЕ' }]
+    delete old.poured
+    store.setItem('gribochi.save.v1', JSON.stringify(old))
+
+    const back = load(T0, store)
+    expect(back.fresh).toBe(false)
+    expect(back.state.generation).toBe(3)
+    expect(dayOf(back.state)).toBe(21)
+    expect(back.state.journal).toHaveLength(1)
+    expect(back.state.poured).toEqual(emptyPoured())
+    // И подача работает сразу: сорт учитывается с этого момента.
+    const fed = feed(back.state, T0, 'ginger')
+    expect(fed.rejected).toBeFalsy()
+    expect(fed.state.poured.ginger).toBe(1)
+  })
+
+  it('счётчик сортов переживает сохранение и загрузку', () => {
+    const store = memory()
+    save({ ...createState(T0), poured: { black: 2, green: 5, ginger: 1 } }, store)
+    expect(load(T0, store).state.poured).toEqual({ black: 2, green: 5, ginger: 1 })
+  })
+
+  it('битый счётчик сортов не отбрасывает сохранение и не течёт в подсчёт', () => {
+    // Чужие ключи и мусорные значения не должны решать сорт партии.
+    const store = memory()
+    const dirty = { ...createState(T0) } as Record<string, unknown>
+    dirty.poured = { black: 'много', green: -3, oolong: 99, ginger: 2.7 }
+    store.setItem('gribochi.save.v1', JSON.stringify(dirty))
+
+    const back = load(T0, store)
+    expect(back.fresh).toBe(false)
+    expect(back.state.poured).toEqual({ ...emptyPoured(), ginger: 2 })
+    expect(dominantTea(back.state)).toBe('ginger')
+  })
+
+  it('сохранение без паузы происшествий открывается и докладывает', () => {
+    // Поля не было — значит прибор просто доложит при первом же долгом
+    // возвращении, а не промолчит непонятно почему.
+    const store = memory()
+    const old = { ...createState(T0), mold: 0.8, growth: 0.4 } as Partial<GameState>
+    delete old.lastIncidentAt
+    store.setItem('gribochi.save.v1', JSON.stringify(old))
+
+    const back = load(T0, store)
+    expect(back.state.lastIncidentAt).toBe(0)
+    expect(incidentFor(back.state, B.ABSENCE_WORTH_NOTING_MS + 1, T0)).toBe('flies')
+  })
+
+  it('пауза происшествий из будущего не запирает доклад', () => {
+    // Её мог оставить отладочный ускоритель или переведённые часы.
+    const store = memory()
+    save({ ...createState(T0), mold: 0.8, lastIncidentAt: T0 + hours(50) }, store)
+    const back = load(T0, store).state
+    expect(back.lastIncidentAt).toBeLessThanOrEqual(T0)
+    expect(incidentFor(back, B.ABSENCE_WORTH_NOTING_MS + 1, T0)).toBe('flies')
   })
 
   it('обрезанное сохранение отбрасывается целиком', () => {

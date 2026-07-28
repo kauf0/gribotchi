@@ -9,7 +9,7 @@
 
 export type Mood = 'happy' | 'ok' | 'sad' | 'angry' | 'away' | 'dead'
 
-export type ScreenMode = 'start' | 'off' | 'boot' | 'game' | 'journal' | 'death'
+export type ScreenMode = 'start' | 'off' | 'boot' | 'game' | 'journal' | 'death' | 'pour' | 'incident'
 
 /**
  * Экран запуска. Он же — та самая нажатая кнопка, без которой браузер не даёт
@@ -54,7 +54,7 @@ export type ScreenState = {
   /** 0…1 — прогресс промывки: 0…0.5 слив, 0.5…1 залив. */
   washing?: number
 
-  /** Текстовые экраны — сводка аварийной службы и извещение о смерти. */
+  /** Текстовые экраны: сводка, извещение о гибели, бланк подачи. */
   report?: Report
 
   /** Экран запуска. */

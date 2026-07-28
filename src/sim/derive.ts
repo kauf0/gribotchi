@@ -85,3 +85,25 @@ export function diagnose(s: GameState): string[] {
 
   return lines
 }
+
+/**
+ * Преобладающий сорт за жизнь поколения — из него складывается сорт партии.
+ * При ничьей сорта нет: партия остаётся просто партией, и это честнее, чем
+ * выбирать победителя по порядку ключей.
+ */
+export function dominantTea(s: GameState): B.TeaKey | null {
+  let best: B.TeaKey | null = null
+  let top = 0
+  let tied = false
+  for (const key of B.TEA_KEYS) {
+    const n = s.poured[key] ?? 0
+    if (n > top) {
+      top = n
+      best = key
+      tied = false
+    } else if (n === top && n > 0) {
+      tied = true
+    }
+  }
+  return tied ? null : best
+}

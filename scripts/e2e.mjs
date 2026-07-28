@@ -70,6 +70,9 @@ async function evaluate(cdp, expression) {
 /** О реакции симуляции судим по сохранению — оно и есть её наблюдаемый выход. */
 const READ_SAVE = `JSON.parse(localStorage.getItem('gribochi.save.v1') ?? 'null')`
 
+/** Нажать кнопку ускорения времени в панели отладки. */
+const pick = (m) => `[...document.querySelectorAll('.dbg button')].find(b => b.textContent === '×${m}').click()`
+
 /**
  * Отпечаток ЖК: экран сжимается в сетку 25×20 средних яркостей. Средней
  * яркости всего кадра не хватает — фон у всех экранов одинаковый, — а сетка
@@ -156,6 +159,24 @@ const SHELL_FONT_FITS = `(async () => {
     return !el || el.scrollWidth > el.clientWidth
   })
   return { bad, ok: bad.length === 0 }
+})()`
+
+/**
+ * Предложение установки помещается в экран и никого не задевает. Проверяется
+ * на телефоне: там оно длиннее всего (подсказка для iOS) и места меньше всего.
+ */
+const INSTALL_FITS = `(async () => {
+  await document.fonts.ready
+  const el = document.querySelector('.install')
+  if (!el || el.classList.contains('is-hidden')) return { ok: false, why: 'предложение не показано' }
+  const r = el.getBoundingClientRect()
+  const leave = document.querySelector('.leave').getBoundingClientRect()
+  return {
+    ok: r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth && r.bottom < leave.top,
+    text: el.textContent,
+    box: Math.round(r.width) + '×' + Math.round(r.height) + ' в ' + innerWidth,
+    cut: el.scrollWidth > el.clientWidth,
+  }
 })()`
 
 /** Центр кнопки прибора в координатах окна — прибор масштабируется под вьюпорт. */
@@ -268,15 +289,50 @@ async function main() {
     const afterUnlock = await evaluate(cdp, `({ notes: window.__notes, oscs: window.__oscs })`)
     check('после загрузки вступает тема', afterUnlock.notes > 3, `нот в очереди ${afterUnlock.notes}`)
 
-    // ЧАЙ
+    // ЧАЙ открывает бланк подачи: сорт заварки выбирается каждый раз, и три
+    // кнопки прибора на время становятся тремя сортами.
+    const onGameBeforePour = await evaluate(cdp, LCD_FINGERPRINT)
     await evaluate(cdp, `document.querySelectorAll('.btn')[0].click()`)
+    await sleep(400)
+    const onPour = await evaluate(cdp, LCD_FINGERPRINT)
+    const pourOpened = diffRatio(onGameBeforePour, onPour)
+    check('ЧАЙ открывает бланк подачи', pourOpened > 0.2, `изменилось ${(pourOpened * 100).toFixed(0)}% экрана`)
+    check(
+      'открытый бланк ещё не кормит — сорт не выбран',
+      (await evaluate(cdp, READ_SAVE)).food === before.food,
+    )
+
+    // Отмены у бланка нет: не выбрали сорт — он закроется сам, и подача
+    // не состоится. Ждём дольше самих шести секунд.
+    await sleep(7000)
+    const pourClosed = diffRatio(onGameBeforePour, await evaluate(cdp, LCD_FINGERPRINT))
+    check('бланк закрывается сам', pourClosed < 0.1, `отличие от игры ${(pourClosed * 100).toFixed(0)}%`)
+    check(
+      'закрывшийся сам бланк не кормит',
+      (await evaluate(cdp, READ_SAVE)).food === before.food,
+    )
+
+    // Второй заход — теперь с выбором. На бланке МЫТЬ означает зелёный сорт,
+    // а не смену среды.
+    await evaluate(cdp, `document.querySelectorAll('.btn')[0].click()`)
+    await sleep(400)
+    await evaluate(cdp, `document.querySelectorAll('.btn')[1].click()`)
     await sleep(400)
     const afterFeed = await evaluate(cdp, READ_SAVE)
     check(
-      'ЧАЙ поднимает сытость',
+      'выбранный сорт поднимает сытость',
       afterFeed.food > before.food,
       `${before.food.toFixed(2)} → ${afterFeed.food.toFixed(2)}`,
     )
+    check(
+      'подан именно зелёный, и он записан в счётчик',
+      afterFeed.poured?.green === 1 && afterFeed.poured?.black === 0,
+      `счётчик ${JSON.stringify(afterFeed.poured)}`,
+    )
+    // Сравниваем с самим бланком, а не с игрой: после подачи на экране сыплется
+    // сахар и меняется лицо, так что до игры «как было» кадр уже не совпадёт.
+    const leftPour = diffRatio(onPour, await evaluate(cdp, LCD_FINGERPRINT))
+    check('после выбора бланк закрывается', leftPour > 0.2, `отличие от бланка ${(leftPour * 100).toFixed(0)}%`)
     const oscsAfterFeed = await evaluate(cdp, `window.__oscs`)
     check(
       'кормление отзывается звуком',
@@ -432,7 +488,6 @@ async function main() {
 
       // Ускорение имеет смысл только для живой симуляции, поэтому само гасит
       // ручной режим — иначе кажется, что время стоит.
-      const pick = (m) => `[...document.querySelectorAll('.dbg button')].find(b => b.textContent === '×${m}').click()`
       const savedBefore = await evaluate(cdp, READ_SAVE)
       await evaluate(cdp, pick(600))
       await sleep(300)
@@ -453,6 +508,8 @@ async function main() {
       // раза в 15 мин», пока реальное время не догонит.
       await evaluate(cdp, `document.querySelectorAll('.btn')[0].click()`)
       await sleep(500)
+      await evaluate(cdp, `document.querySelectorAll('.btn')[0].click()`)
+      await sleep(500)
       await evaluate(cdp, pick(1))
       await cdp.send('Page.reload')
       await sleep(4500)
@@ -467,6 +524,9 @@ async function main() {
         staleFeed.ageMs > savedBefore.ageMs + 1000,
         `${Math.round(savedBefore.ageMs / 60000)} → ${Math.round(staleFeed.ageMs / 60000)} игровых минут`,
       )
+      // ЧАЙ открывает бланк, сорт выбирается на нём: подача — два нажатия.
+      await realClick(cdp, ...(await centerOf(cdp, 0)))
+      await sleep(600)
       await realClick(cdp, ...(await centerOf(cdp, 0)))
       await sleep(600)
       const freshFeed = await evaluate(cdp, READ_SAVE)
@@ -490,6 +550,116 @@ async function main() {
         'кнопка стирания и правда начинает новую жизнь',
         !afterWipe || afterWipe.bornAt !== bornBefore,
         afterWipe ? `bornAt ${bornBefore} → ${afterWipe.bornAt}` : 'сохранения нет',
+      )
+    }
+
+    // Журнал наблюдений. Прибор обещает, что помнит не только про гриб, —
+    // проверяем самый показательный случай: объект отвернулся, и это попало
+    // в журнал само, без единого нажатия.
+    if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+      console.log('  ––   журнал наблюдений: пропущено (сидирование только в разработке)')
+    } else {
+      // Голодный объект с обидой у самого порога: при ×600 он переступит его
+      // за пару секунд, а умирать будет ещё минуту — успеваем.
+      await cdp.send('Page.navigate', { url: `${URL}?sim.food=.05&sim.resentment=.58` })
+      await sleep(1500)
+      await realClick(cdp, ...(await centerOf(cdp, 2)))
+      await sleep(3800)
+
+      const beforeWatch = await evaluate(cdp, READ_SAVE)
+      check(
+        'до перехода журнал пуст — прибор не пишет о том, чего не было',
+        (beforeWatch.journal ?? []).length === 0,
+        `записей ${(beforeWatch.journal ?? []).length}`,
+      )
+
+      await evaluate(cdp, pick(600))
+      await sleep(4000)
+      const watched = await evaluate(cdp, READ_SAVE)
+      const kinds = (watched.journal ?? []).map((e) => e.kind)
+      check(
+        'прибор сам записал, что объект отвернулся',
+        kinds.includes('turned-away'),
+        `записи: ${kinds.join(', ') || 'нет'}`,
+      )
+      check(
+        'запись легла в сохранение по существу, а не готовой строкой',
+        (watched.journal ?? []).every((e) => typeof e.kind === 'string' && e.text === undefined),
+      )
+
+      // Веха не должна дублироваться: это уже не новость.
+      await sleep(3000)
+      const later = (await evaluate(cdp, READ_SAVE)).journal ?? []
+      check(
+        'веха не повторяется',
+        later.filter((e) => e.kind === 'turned-away').length === 1,
+        `повторов ${later.filter((e) => e.kind === 'turned-away').length}`,
+      )
+    }
+
+    // Происшествие на возвращении. Отлучку подделываем прямо в сохранении:
+    // ждать семь часов в тесте невозможно, а это ровно тот случай, ради
+    // которого происшествия и заведены.
+    {
+      await cdp.send('Page.navigate', { url: URL })
+      await sleep(1200)
+      await evaluate(
+        cdp,
+        `(() => {
+          const now = Date.now()
+          const day = 3 * 60 * 60 * 1000
+          const away = 7 * 3600 * 1000
+          localStorage.setItem('gribochi.save.v1', JSON.stringify({
+            version: 1,
+            bornAt: now - 20 * day,
+            ageMs: 20 * day,
+            lastTick: now - away,
+            generation: 2,
+            food: 1, growth: 0.4, mold: 0.5, resentment: 0.1,
+            alive: true, deathAt: null, deathDay: null,
+            lastFedAt: now - away,
+            lastCleanedAt: now - away,
+            fedAtAge: 19 * day, stressUntil: 0, resentFactor: 1,
+            poured: { black: 2, green: 0, ginger: 0 },
+            longestAwayMs: 0, lastIncidentAt: 0, journal: [],
+          }))
+          // Замораживаем запись: при перезагрузке игра сохраняется по pagehide
+          // и затёрла бы подделку своим состоянием.
+          localStorage.setItem = () => {}
+        })()`,
+      )
+      await cdp.send('Page.reload')
+      await sleep(1500)
+      await realClick(cdp, ...(await centerOf(cdp, 2)))
+      await sleep(4200)
+
+      const onIncident = await evaluate(cdp, LCD_FINGERPRINT)
+      const beforeAnswer = await evaluate(cdp, READ_SAVE)
+      check(
+        'подделанная отлучка догналась: обстановка запущенная',
+        beforeAnswer.mold > 0.45 && beforeAnswer.alive,
+        `плесень ${beforeAnswer.mold.toFixed(2)}, жив ${beforeAnswer.alive}`,
+      )
+
+      // МЫТЬ на бланке — «сменить среду»: дорого и до конца. Решающая проверка
+      // не в цифрах (обычное МЫТЬ тоже снимает плесень), а в записи журнала.
+      await realClick(cdp, ...(await centerOf(cdp, 1)))
+      await sleep(900)
+      const answered = await evaluate(cdp, READ_SAVE)
+      const entry = (answered.journal ?? []).find((e) => e.kind === 'incident')
+      check(
+        'прибор доложил о происшествии и запомнил решение владельца',
+        !!entry && entry.incident === 'flies' && entry.answer === 1,
+        entry ? `${entry.incident} / ответ ${entry.answer}` : `записи нет: ${JSON.stringify(answered.journal)}`,
+      )
+      check(
+        'ответ разбирается с происшествием',
+        answered.mold < beforeAnswer.mold - 0.2,
+        `плесень ${beforeAnswer.mold.toFixed(2)} → ${answered.mold.toFixed(2)}`,
+      )
+      check(
+        'после ответа бланк закрывается',
+        diffRatio(onIncident, await evaluate(cdp, LCD_FINGERPRINT)) > 0.2,
       )
     }
 
@@ -537,6 +707,80 @@ async function main() {
 
     const errors = await evaluate(cdp, `(window.__errors ?? []).length`)
     check('на странице нет накопленных ошибок', errors === 0 || errors === undefined)
+
+    // Предложение установки. В разработке его можно вызвать параметром —
+    // beforeinstallprompt в headless-браузере не приходит, а проверить, что
+    // надпись помещается в телефон, надо.
+    if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+      console.log('  ––   предложение установки: пропущено (параметр ?install только в разработке)')
+    } else {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 360,
+        height: 780,
+        deviceScaleFactor: 2,
+        mobile: true,
+      })
+      for (const [mode, what] of [
+        ['prompt', 'кнопка установки'],
+        ['ios', 'подсказка для iOS'],
+      ]) {
+        await cdp.send('Page.navigate', { url: `${URL}?t=4&install=${mode}` })
+        await sleep(1800)
+        const fit = await evaluate(cdp, INSTALL_FITS)
+        check(
+          `${what} помещается в экран телефона`,
+          fit.ok,
+          fit.why || `${fit.box}${fit.cut ? ', обрезано' : ''} — «${fit.text}»`,
+        )
+      }
+      await cdp.send('Emulation.clearDeviceMetricsOverride')
+    }
+
+    // Установка как приложения. Игра выложена в двух местах одной сборкой:
+    // врезкой на itch и отдельной страницей на GitHub Pages, где её ставят
+    // на устройство. Проверяем то, без чего браузер не считает страницу
+    // устанавливаемой, — и делаем это на собранной версии, поданной ИЗ
+    // ПОДПАПКИ, как на Pages: абсолютный путь там отвалится молча.
+    const manifest = await evaluate(
+      cdp,
+      `(async () => {
+        const link = document.querySelector('link[rel=manifest]')
+        if (!link) return { ok: false, why: 'нет ссылки на манифест' }
+        const res = await fetch(link.href)
+        if (!res.ok) return { ok: false, why: 'манифест не отдался: ' + res.status }
+        const m = await res.json()
+        const icons = await Promise.all(
+          m.icons.map(async (i) => {
+            const url = new URL(i.src, link.href)
+            const r = await fetch(url)
+            return { src: i.src, ok: r.ok }
+          }),
+        )
+        return {
+          ok: true,
+          display: m.display,
+          orientation: m.orientation,
+          maskable: m.icons.some((i) => i.purpose === 'maskable'),
+          sizes: m.icons.map((i) => i.sizes),
+          missing: icons.filter((i) => !i.ok).map((i) => i.src),
+          href: link.href,
+        }
+      })()`,
+    )
+    check('манифест отдаётся из подпапки', manifest.ok, manifest.why || manifest.href)
+    if (manifest.ok) {
+      check(
+        'все иконки манифеста на месте',
+        manifest.missing.length === 0,
+        manifest.missing.length ? `не отдались: ${manifest.missing.join(', ')}` : manifest.sizes.join(', '),
+      )
+      check('есть maskable-иконка — иначе Android срежет углы', manifest.maskable)
+      check(
+        'прибор открывается вертикально и во весь экран',
+        manifest.orientation === 'portrait' && manifest.display === 'fullscreen',
+        `${manifest.display} / ${manifest.orientation}`,
+      )
+    }
 
     // Офлайн. Service worker регистрируется только в собранной версии, поэтому
     // на dev-сервере проверка честно пропускается, а не выдаёт ложное «ok».

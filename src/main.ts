@@ -11,17 +11,22 @@ import { readUrlSeed } from './debug/params'
 
 import { load, save, wipe } from './sim/persist'
 import { advance } from './sim/tick'
+import { ABSENCE_WORTH_NOTING_MS } from './sim/balance'
 import { bottle, clean, feed, nextGeneration, sos, type ActionResult } from './sim/actions'
-import { canBottle, dayOf, moodOf } from './sim/derive'
+import { canBottle, canFeed, dayOf, moodOf } from './sim/derive'
 import type { GameState } from './sim/state'
 import { Fx } from './view/fx'
 import { project } from './view/project'
-import { summary, obituary, maxScroll } from './view/reports'
+import { summary, obituary, pourBlank, incidentBlank, maxScroll } from './view/reports'
 import { VISIBLE_LINES } from './view/screens/report'
 import { Audio } from './audio'
 import { intentFor, type Phase, type UiMode } from './ui/controller'
 import { reactionTo, type Signals } from './ui/reactions'
+import { observe, noteReturn } from './sim/observations'
+import { incidentFor, answer, type IncidentKind } from './sim/incidents'
+import { rememberAll, type JournalKind } from './sim/journal'
 import { leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
+import { installOffer, DISMISSED_KEY, type InstallOffer } from './ui/install'
 import { demoFrameAt } from './demo/timeline'
 
 /** Тайминги включения прибора, секунды. */
@@ -29,8 +34,8 @@ const BOOT = { led: 0.4, from: 0.5, to: 2.6, done: 3.0 } as const
 const SAVE_EVERY_MS = 20_000
 /** Сколько показывать банку с мёртвым грибом, прежде чем выдать извещение. */
 const DEATH_LINGER_MS = 6000
-/** Отсутствие дольше этого стоит того, чтобы прибор о нём напомнил. */
-const AWAY_WORTH_MENTION_MS = 6 * 3600_000
+/** Сколько бланк подачи ждёт выбора сорта, прежде чем закрыться сам. */
+const POUR_BLANK_MS = 6000
 /** Через столько бездействия прибор сам показывает ролик — как автомат в зале. */
 const IDLE_BEFORE_ATTRACT_MS = 60_000
 
@@ -41,6 +46,9 @@ const IDLE_BEFORE_ATTRACT_MS = 60_000
  * единственным непроверенным поведением игры.
  */
 let idleBeforeAttract = IDLE_BEFORE_ATTRACT_MS
+
+/** Принудительный показ предложения установки из ?install= — только в разработке. */
+let forcedInstall: 'prompt' | 'ios-hint' | undefined
 
 const root = document.getElementById('app')
 if (!root) throw new Error('нет #app')
@@ -69,6 +77,16 @@ let ui: UiMode = 'game'
 let phase: Phase = 'start'
 let bootStartedAt = 0
 let scroll = 0
+/**
+ * Когда открыт бланк подачи, по performance.now(). Отмены у него нет: не выбрали
+ * сорт — бланк закроется сам, и подача просто не состоится. Так одно лишнее
+ * нажатие не превращается в ловушку, а прибор остаётся немногословным.
+ *
+ * Время здесь настоящее, а не игровое: при отладочном ускорении шесть игровых
+ * секунд пролетают за десяток миллисекунд, и выбрать сорт стало бы нельзя.
+ * Тот же приём, что у загрузочного экрана.
+ */
+let pourOpenedAt = 0
 let lastSaved = 0
 /**
  * Запись приостановлена. Нужна ровно для стирания сохранения: страница
@@ -87,10 +105,41 @@ let forceAttract = false
 /** Когда ролик был прерван: нажатие, погасившее его, не должно ещё и кормить. */
 let attractEndedAt = -Infinity
 
+/** Состояние на прошлом кадре — с ним сверяются наблюдения журнала. */
+let prevJournal: GameState | null = null
+
+/**
+ * Происшествие, о котором прибор доложит, как только закончит загрузку.
+ *
+ * Живёт только в памяти вкладки: перезагрузка — это тоже возвращение, но уже
+ * без отлучки, и нового происшествия не будет. Потерять доклад при закрытии
+ * вкладки не жалко, а тащить его через сохранение значило бы держать игрока
+ * на бланке до тех пор, пока он не ответит.
+ */
+let pendingIncident: IncidentKind | null = null
+
 const restored = load(clock.now())
 let state: GameState = restored.state
+// Отлучку записываем сразу: она уже случилась, и от того, включит ли игрок
+// прибор, факт не зависит.
+if (!restored.fresh) {
+  state = noteReturn(state, restored.awayMs, occasion(clock.now()))
+  pendingIncident = incidentFor(state, restored.awayMs, clock.now())
+}
 
-const shell = mountShell(root, { onPress: handlePress, onSpeaker: toggleSound, onLeave: leaveForNow })
+/** Обстоятельства для наблюдений: симуляция о часовых поясах не знает. */
+function occasion(now: number) {
+  // Час берётся из часов игры, а не из настенных: при отладочном ускорении он
+  // бежит вместе с ними, и ночную подачу можно проверить, не дожидаясь ночи.
+  return { now, hour: new Date(now).getHours() }
+}
+
+const shell = mountShell(root, {
+  onPress: handlePress,
+  onSpeaker: toggleSound,
+  onLeave: leaveForNow,
+  onInstall: installPrompt,
+})
 const lcd = new Lcd(shell.canvas, skin)
 shell.setMuted(!audio.on)
 
@@ -149,11 +198,27 @@ if (import.meta.env.DEV) {
     const { dead, journal, ...values } = seed.sim
     Object.assign(state, values)
     if (journal) {
+      // Перебираем виды по кругу: снимок должен показывать и вехи, и
+      // наблюдения, а самая длинная запись — партия с сортом.
+      const kinds: JournalKind[] = [
+        'batch',
+        'absence-record',
+        'turned-away',
+        'night-pour',
+        'forgiven',
+        'full-grown',
+        'overfed',
+        'death',
+      ]
       state.journal = Array.from({ length: journal }, (_, i) => ({
         at: now - (journal - i) * 3600_000,
         generation: Math.max(1, state.generation - 1),
-        day: i + 1,
-        text: `ПАРТИЯ №${i + 1} · ДЕНЬ ${8 + i * 3} · КАЧЕСТВО ПЕРВОЕ`,
+        day: 8 + i * 3,
+        kind: kinds[i % kinds.length],
+        tea: 'ginger' as const,
+        grade: 'top' as const,
+        daughter: true,
+        hours: 14 + i,
       }))
     }
     if (dead) {
@@ -165,11 +230,22 @@ if (import.meta.env.DEV) {
     }
   }
   if (seed.open === 'report') ui = 'report'
+  if (seed.open === 'incident') {
+    // Какое именно — решает обстановка, её задают тем же ?sim.mold и прочими.
+    pendingIncident = incidentFor({ ...state, lastIncidentAt: 0 }, ABSENCE_WORTH_NOTING_MS + 1, clock.now())
+    if (pendingIncident) ui = 'incident'
+  }
+  if (seed.open === 'pour') {
+    ui = 'pour'
+    // Бланк для снимка не должен закрыться сам через шесть секунд.
+    pourOpenedAt = Infinity
+  }
   if (seed.attract !== undefined) {
     forceAttract = true
     attractSince = seed.attract
   }
   if (seed.idleBeforeAttract !== undefined) idleBeforeAttract = seed.idleBeforeAttract
+  forcedInstall = seed.install
 }
 
 applySkin(skin)
@@ -180,7 +256,7 @@ shell.setScreenOn(false)
  * страницы, она бы истекла, пока игрок разглядывает экран запуска.
  */
 let awayMessage =
-  !restored.fresh && restored.awayMs > AWAY_WORTH_MENTION_MS
+  !restored.fresh && restored.awayMs > ABSENCE_WORTH_NOTING_MS
     ? wereAway(Math.floor(restored.awayMs / 3600_000))
     : null
 
@@ -293,6 +369,7 @@ function handlePress(id: ButtonId): void {
       alive: state.alive,
       ready: canBottle(state),
       deathSettled: now - noticedDeathAt > DEATH_LINGER_MS,
+      canFeed: canFeed(state, now),
     },
     id,
   )
@@ -305,7 +382,9 @@ function handlePress(id: ButtonId): void {
       // Вернулись после «отойти по делам» — прибор посчитает, сколько прошло.
       if (leftAt) {
         const away = Math.max(0, now - leftAt)
-        if (away > AWAY_WORTH_MENTION_MS) awayMessage = wereAway(Math.floor(away / 3600_000))
+        if (away > ABSENCE_WORTH_NOTING_MS) awayMessage = wereAway(Math.floor(away / 3600_000))
+        state = noteReturn(state, away, occasion(now))
+        pendingIncident = incidentFor(state, away, now)
         leftAt = 0
       }
       phase = 'boot'
@@ -317,8 +396,30 @@ function handlePress(id: ButtonId): void {
       return
 
     case 'feed':
+      // Сюда попадаем только при неистёкшем кулдауне: бланк не открывается,
+      // отповедь выдаёт сама симуляция.
       apply(feed(state, now), now)
       return
+
+    case 'open-pour':
+      audio.click()
+      ui = 'pour'
+      pourOpenedAt = performance.now()
+      return
+
+    case 'pour':
+      ui = 'game'
+      apply(feed(state, now, intent.tea), now)
+      return
+
+    case 'answer': {
+      const kind = pendingIncident
+      pendingIncident = null
+      ui = 'game'
+      if (kind) apply(answer(state, kind, intent.index, now), now)
+      persist(now, true)
+      return
+    }
 
     case 'clean':
       apply(clean(state, now), now)
@@ -376,6 +477,96 @@ function watchSignals(now: number): void {
   prevSignals = signals
 }
 
+/**
+ * Что прибор заметил и записал. Решение принимает чистая observe() из
+ * sim/observations.ts — здесь только сверка кадра с кадром.
+ */
+function watchJournal(now: number): void {
+  const prev = prevJournal
+  prevJournal = state
+  // Первый кадр сравнивать не с чем.
+  if (!prev) return
+
+  const found = observe(prev, state, occasion(now))
+  if (found.length === 0) return
+
+  state = { ...state, journal: rememberAll(state.journal, found) }
+  prevJournal = state
+  // Записанное сохраняем сразу: событие редкое, а потерять его при закрытой
+  // вкладке обиднее, чем лишний раз записать в хранилище.
+  persist(now, true)
+}
+
+/**
+ * Установка прибора на устройство.
+ *
+ * Событие beforeinstallprompt браузер присылает только там, где ставить есть
+ * куда: на своей странице и не во врезке. Поэтому одна и та же сборка молчит
+ * на itch и предлагает установку на отдельной странице — разных сборок для
+ * этого не нужно.
+ */
+let installEvent: (Event & { prompt: () => Promise<void> }) | null = null
+let installDismissed = readDismissed()
+// Обстановка, которая за кадр не меняется, — считается один раз: refreshInstall()
+// вызывается на каждом кадре, и создавать там MediaQueryList было бы расточительно.
+const standaloneQuery = matchMedia('(display-mode: standalone), (display-mode: fullscreen)')
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
+/** Что показано сейчас — чтобы не трогать DOM, когда ничего не изменилось. */
+let installShown = ''
+
+function readDismissed(): boolean {
+  try {
+    return localStorage.getItem(DISMISSED_KEY) === '1'
+  } catch {
+    // Приватный режим: предложение просто будет появляться снова.
+    return false
+  }
+}
+
+function refreshInstall(): void {
+  const offer: InstallOffer = forcedInstall
+    ? { show: true, mode: forcedInstall }
+    : installOffer({
+        promptAvailable: installEvent !== null,
+        standalone: standaloneQuery.matches,
+        ios: isIos,
+        dismissed: installDismissed,
+        embedded: window.parent !== window,
+      })
+
+  const key = offer.show ? offer.mode : 'нет'
+  if (key === installShown) return
+  installShown = key
+  shell.setInstall(offer)
+}
+
+function installPrompt(): void {
+  const event = installEvent
+  // Второй раз не навязываемся: нажали — либо поставили, либо посмотрели
+  // подсказку и закрыли.
+  installEvent = null
+  installDismissed = true
+  try {
+    localStorage.setItem(DISMISSED_KEY, '1')
+  } catch {
+    // см. readDismissed
+  }
+  refreshInstall()
+  void event?.prompt()
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  // Свой значок вместо баннера браузера: он не должен закрывать прибор.
+  event.preventDefault()
+  installEvent = event as Event & { prompt: () => Promise<void> }
+  refreshInstall()
+})
+window.addEventListener('appinstalled', () => {
+  installEvent = null
+  refreshInstall()
+})
+refreshInstall()
+
 /** Что показывает прибор: экран запуска, загрузку или саму игру. */
 function startCard(): StartCard {
   if (restored.fresh) return { action: START.action, hint: START.hint }
@@ -412,6 +603,15 @@ function buildScreen(t: number): ScreenState {
   if (ui === 'report') {
     return { ...screen, mode: 'journal', report: summary(state, scroll) }
   }
+  if (ui === 'incident' && pendingIncident) {
+    return { ...screen, mode: 'incident', report: incidentBlank(pendingIncident) }
+  }
+  if (ui === 'pour') {
+    // Отсчёт подрезан сверху: снимок бланка открывает его «навсегда», и без
+    // этого в подсказке оказалась бы бесконечность.
+    const left = Math.min(POUR_BLANK_MS, POUR_BLANK_MS - (performance.now() - pourOpenedAt)) / 1000
+    return { ...screen, mode: 'pour', report: pourBlank(left) }
+  }
   return screen
 }
 
@@ -438,6 +638,9 @@ function frame(ms: number): void {
     phase = 'game'
     if (awayMessage) fx.say(awayMessage, now)
     awayMessage = null
+    // Доклад о происшествии — после загрузки: на экране запуска отвечать
+    // ещё нечем, прибор туда даже не смотрит.
+    if (pendingIncident) ui = 'incident'
   }
 
   const wasAlive = state.alive
@@ -445,10 +648,16 @@ function frame(ms: number): void {
   if (wasAlive && !state.alive) {
     noticedDeathAt = now
     ui = 'game'
+    // Доклад некому: объект погиб, пока владелец читал бланк.
+    pendingIncident = null
     persist(now, true)
   }
 
+  // Бланк подачи закрывается сам: отмены у него нет, и висеть он не должен.
+  if (ui === 'pour' && ms - pourOpenedAt >= POUR_BLANK_MS) ui = 'game'
+
   watchSignals(now)
+  watchJournal(now)
   persist(now)
   audio.setThemeAllowed(phase === 'game' || attractSince !== null)
 
@@ -475,6 +684,11 @@ function frame(ms: number): void {
     shell.setCaption(demo.caption, demo.captionOpacity)
     shell.setTitleCard(demo.title)
     shell.setLeaveVisible(false)
+    // Ролик — витрина: ни надписей поверх прибора, ни предложений установки.
+    if (installShown !== 'нет') {
+      installShown = 'нет'
+      shell.setInstall({ show: false })
+    }
     audio.update(demo.screen.mood, !!demo.screen.alarm, now)
     requestAnimationFrame(frame)
     return
@@ -488,6 +702,7 @@ function frame(ms: number): void {
   // Отходить по делам можно только от работающего прибора: на экране запуска
   // уходить неоткуда, а кнопка лишь путала бы.
   shell.setLeaveVisible(phase === 'game')
+  refreshInstall()
   audio.update(s.mood, !!s.alarm, now)
 
   requestAnimationFrame(frame)

@@ -48,6 +48,12 @@ SCENES = {
     "12-svodka": "t=4&sim.food=.12&sim.mold=.55&sim.growth=.4&sim.resentment=.7"
     "&sim.generation=3&sim.journal=4&open=report",
     "13-izveshchenie": "t=4&sim.dead&sim.growth=.7&sim.generation=2&sim.journal=2",
+    # Бланк подачи. Открытый параметром, он не закрывается сам через шесть
+    # секунд — иначе снять его было бы нечем.
+    "14-podacha": "t=4&sim.food=.35&sim.growth=.4&open=pour",
+    # Происшествие. Какое именно — решает обстановка в банке, поэтому задаём
+    # плесень: с ней прибор докладывает про мошку.
+    "15-proisshestvie": "t=4&sim.mold=.6&sim.food=.4&sim.growth=.4&open=incident",
 }
 
 

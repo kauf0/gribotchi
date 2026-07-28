@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { intentFor, type ControlContext, type Intent } from '../src/ui/controller'
+import { TEA_KEYS } from '../src/sim/balance'
 import type { ButtonId } from '../src/view/shell'
 
 const BUTTONS: ButtonId[] = ['A', 'B', 'C']
@@ -21,6 +22,7 @@ const ctx = (over: Partial<ControlContext> = {}): ControlContext => ({
   alive: true,
   ready: false,
   deathSettled: true,
+  canFeed: true,
   ...over,
 })
 
@@ -68,18 +70,58 @@ describe('промывка', () => {
 })
 
 describe('обычная игра', () => {
-  it('ЧАЙ кормит, МЫТЬ убирает, СОС открывает сводку', () => {
-    expect(kinds(ctx())).toEqual(['feed', 'clean', 'open-report'])
+  it('ЧАЙ открывает бланк подачи, МЫТЬ убирает, СОС открывает сводку', () => {
+    expect(kinds(ctx())).toEqual(['open-pour', 'clean', 'open-report'])
   })
 
   it('у доросшего объекта СОС превращается в розлив', () => {
-    expect(kinds(ctx({ ready: true }))).toEqual(['feed', 'clean', 'bottle'])
+    expect(kinds(ctx({ ready: true }))).toEqual(['open-pour', 'clean', 'bottle'])
   })
 
-  it('готовность к розливу не мешает кормить и мыть', () => {
+  it('готовность к розливу не мешает подать чай и помыть', () => {
     const c = ctx({ ready: true })
-    expect(intentFor(c, 'A').kind).toBe('feed')
+    expect(intentFor(c, 'A').kind).toBe('open-pour')
     expect(intentFor(c, 'B').kind).toBe('clean')
+  })
+
+  it('до истечения кулдауна бланк не открывается — отповедь выдаёт симуляция', () => {
+    // Незачем звать выбирать сорт, если наливать всё равно рано.
+    expect(intentFor(ctx({ canFeed: false }), 'A').kind).toBe('feed')
+  })
+})
+
+describe('бланк подачи', () => {
+  it('три кнопки становятся тремя сортами по порядку', () => {
+    const c = ctx({ ui: 'pour' })
+    expect(intentFor(c, 'A')).toEqual({ kind: 'pour', tea: 'black' })
+    expect(intentFor(c, 'B')).toEqual({ kind: 'pour', tea: 'green' })
+    expect(intentFor(c, 'C')).toEqual({ kind: 'pour', tea: 'ginger' })
+  })
+
+  it('каждой кнопке достаётся свой сорт: ни один не потерян и не удвоен', () => {
+    const c = ctx({ ui: 'pour' })
+    const teas = BUTTONS.map((id) => {
+      const intent = intentFor(c, id)
+      return intent.kind === 'pour' ? intent.tea : null
+    })
+    expect(new Set(teas).size).toBe(TEA_KEYS.length)
+    expect(teas).toEqual(TEA_KEYS)
+  })
+
+  it('с открытого бланка нельзя случайно помыть или разлить', () => {
+    const c = ctx({ ui: 'pour', ready: true })
+    for (const id of BUTTONS) {
+      expect(['clean', 'bottle', 'open-report']).not.toContain(intentFor(c, id).kind)
+    }
+  })
+
+  it('смерть с открытым бланком закрывает его: подавать уже некому', () => {
+    expect(kinds(ctx({ ui: 'pour', alive: false }))).toEqual(['ignore', 'ignore', 'next-generation'])
+  })
+
+  it('промывка и ролик перекрывают бланк', () => {
+    expect(kinds(ctx({ ui: 'pour', washing: true }))).toEqual(['ignore', 'ignore', 'ignore'])
+    expect(kinds(ctx({ ui: 'pour', attract: true }))).toEqual(['ignore', 'ignore', 'ignore'])
   })
 })
 
@@ -99,6 +141,43 @@ describe('сводка', () => {
     for (const id of BUTTONS) {
       expect(['feed', 'clean', 'bottle']).not.toContain(intentFor(c, id).kind)
     }
+  })
+})
+
+describe('бланк происшествия', () => {
+  it('три кнопки становятся тремя ответами по порядку', () => {
+    const c = ctx({ ui: 'incident' })
+    expect(kinds(c)).toEqual(['answer', 'answer', 'answer'])
+    expect(BUTTONS.map((id) => intentFor(c, id))).toEqual([
+      { kind: 'answer', index: 0 },
+      { kind: 'answer', index: 1 },
+      { kind: 'answer', index: 2 },
+    ])
+  })
+
+  it('промахнуться нельзя: отмены нет, любой ответ годится', () => {
+    // В том числе «переложить на службу» — потому бланк и не боится
+    // случайного нажатия.
+    const c = ctx({ ui: 'incident' })
+    for (const id of BUTTONS) expect(intentFor(c, id).kind).not.toBe('ignore')
+  })
+
+  it('с открытого бланка нельзя случайно накормить, помыть или разлить', () => {
+    const c = ctx({ ui: 'incident', ready: true })
+    for (const id of BUTTONS) {
+      expect(['feed', 'open-pour', 'clean', 'bottle', 'open-report']).not.toContain(
+        intentFor(c, id).kind,
+      )
+    }
+  })
+
+  it('смерть и промывка перекрывают бланк', () => {
+    expect(kinds(ctx({ ui: 'incident', alive: false }))).toEqual([
+      'ignore',
+      'ignore',
+      'next-generation',
+    ])
+    expect(kinds(ctx({ ui: 'incident', washing: true }))).toEqual(['ignore', 'ignore', 'ignore'])
   })
 })
 
@@ -132,7 +211,7 @@ describe('смерть', () => {
 describe('полнота', () => {
   it('ни одно сочетание состояний не роняет функцию', () => {
     const phases = ['start', 'boot', 'game'] as const
-    const uis = ['game', 'report'] as const
+    const uis = ['game', 'report', 'pour', 'incident'] as const
     const flags = [false, true]
     let combos = 0
 
@@ -144,12 +223,14 @@ describe('полнота', () => {
               for (const ready of flags) {
                 for (const deathSettled of flags) {
                   for (const id of BUTTONS) {
-                    const intent = intentFor(
-                      { phase, ui, attract, washing, alive, ready, deathSettled },
-                      id,
-                    )
-                    expect(intent.kind).toBeTruthy()
-                    combos++
+                    for (const canFeed of flags) {
+                      const intent = intentFor(
+                        { phase, ui, attract, washing, alive, ready, deathSettled, canFeed },
+                        id,
+                      )
+                      expect(intent.kind).toBeTruthy()
+                      combos++
+                    }
                   }
                 }
               }
@@ -158,11 +239,11 @@ describe('полнота', () => {
         }
       }
     }
-    expect(combos).toBe(3 * 2 * 2 * 2 * 2 * 2 * 2 * 3)
+    expect(combos).toBe(3 * 4 * 2 * 2 * 2 * 2 * 2 * 2 * 3)
   })
 
   it('действия над объектом возможны только в живой игре', () => {
-    const acting: Intent['kind'][] = ['feed', 'clean', 'bottle', 'open-report']
+    const acting: Intent['kind'][] = ['feed', 'pour', 'answer', 'clean', 'bottle', 'open-report']
     const phases = ['start', 'boot', 'game'] as const
     for (const phase of phases) {
       for (const alive of [false, true]) {

@@ -1,0 +1,433 @@
+/*
+ * Корпус прибора. Все размеры — в «единицах прибора» (1 единица = 1 пиксель
+ * ЖК-буфера), числа взяты из reference/README.md напрямую. Вписыванием во
+ * вьюпорт занимается shell.ts: он ставит .stage целым числом device-пикселей
+ * на единицу, поэтому пиксельная сетка экрана никогда не разъезжается.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #101109;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── комната ──────────────────────────────────────────────────── */
+
+.room {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 20%, #4a4a38 0%, #2a2b21 55%, #16170f 100%);
+}
+
+.room__cloth {
+  position: absolute;
+  left: -100px;
+  right: -100px;
+  top: 62%;
+  bottom: -40px;
+  background:
+    repeating-linear-gradient(90deg, #5b3a2e 0 46px, #6b4636 46px 92px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0 46px, rgba(255, 255, 255, 0.05) 46px 92px);
+  background-blend-mode: multiply;
+  transform: perspective(700px) rotateX(58deg);
+  transform-origin: top center;
+  box-shadow: inset 0 40px 80px rgba(0, 0, 0, 0.55);
+}
+
+.room__vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 220px rgba(0, 0, 0, 0.85);
+  z-index: 10;
+}
+
+/* ── сцена: масштабируется целым числом device-пикселей на единицу ── */
+
+.stage {
+  position: fixed;
+  width: 480px;
+  height: 646px;
+  transform-origin: 0 0;
+}
+
+/* ── ушко для брелока: рисуется под корпусом, торчит только дужка ── */
+
+.lug-ring {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 10px solid #9c9174;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
+}
+
+.lug-neck {
+  position: absolute;
+  width: 64px;
+  height: 40px;
+  border-radius: 12px 12px 0 0;
+  background: #9c9174;
+}
+
+/* ── корпус ───────────────────────────────────────────────────── */
+
+.body {
+  position: absolute;
+  width: 480px;
+  height: 600px;
+  border-radius: 54px 54px 40px 40px;
+  background: linear-gradient(160deg, #ded4b6 0%, #c6bb9c 42%, #9c9174 100%);
+  box-shadow:
+    0 30px 60px rgba(0, 0, 0, 0.55),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.22),
+    inset 0 8px 0 rgba(255, 255, 255, 0.35);
+}
+
+.bezel {
+  position: absolute;
+  border-radius: 14px;
+  background: #3b3627;
+  box-shadow:
+    inset 0 4px 10px rgba(0, 0, 0, 0.7),
+    0 2px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* ── ЖК ───────────────────────────────────────────────────────── */
+
+.lcd {
+  position: absolute;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/*
+ * Сканлайны идут отдельным слоем, а не в буфер: там линия толщиной в пиксель
+ * съела бы целую строку пикселей гриба. Период задаётся в единицах прибора,
+ * но пересчитывается в shell.ts так, чтобы на экране он всегда оставался ~3 px
+ * независимо от масштаба — иначе на крупном приборе получаются жирные полосы
+ * вместо сеточки люминофора.
+ */
+.lcd-overlay {
+  position: absolute;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.1) 0 var(--scan-line, 1px),
+    rgba(0, 0, 0, 0) var(--scan-line, 1px) var(--scan-period, 3px)
+  );
+  box-shadow: inset 0 0 40px rgba(20, 30, 10, 0.45);
+}
+
+.lcd-glow {
+  position: absolute;
+  pointer-events: none;
+  box-shadow: 0 0 60px var(--glow, rgba(240, 190, 110, 0.35));
+  transition: opacity 0.25s;
+}
+
+/* ── шильдик ──────────────────────────────────────────────────── */
+
+.plate {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  font-family: 'PT Sans Narrow', sans-serif;
+  color: #2b271d;
+  white-space: nowrap;
+  /* Запасной шрифт шире PT Sans Narrow, и до его подгрузки надпись вылезала
+     бы за корпус на стол. */
+  overflow: hidden;
+}
+
+.plate__name {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  line-height: 1;
+}
+
+.plate__marks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.plate__gost {
+  font-size: 17px;
+  letter-spacing: 1px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+/* Катакана — служебная маркировка, а не второй логотип: мелко и приглушённо. */
+.plate__jp {
+  font-family: 'DotGothic16', 'PT Sans Narrow', sans-serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+.subtitle {
+  position: absolute;
+  font-family: 'PT Sans Narrow', sans-serif;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: #2b271d;
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── кнопки ───────────────────────────────────────────────────── */
+
+.btn {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #9c9174;
+  color: #2b271d;
+  font-family: 'PT Sans Narrow', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  box-shadow:
+    0 5px 0 #6f664f,
+    inset 0 3px 0 rgba(255, 255, 255, 0.25);
+}
+
+.btn--sos {
+  background: #8e3a2a;
+  color: #f0e4cd;
+}
+
+.btn:focus-visible {
+  outline: 3px solid #f0e4cd;
+  outline-offset: 3px;
+}
+
+.btn.is-pressed {
+  transform: translateY(4px);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* ── динамик и светодиод ──────────────────────────────────────── */
+
+.speaker {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.speaker > i {
+  background: #6f664f;
+  opacity: 0.5;
+  border-radius: 3px;
+}
+
+/* Звук выключен — решётка гаснет. */
+.speaker.is-muted > i {
+  opacity: 0.22;
+}
+
+/*
+ * Переключатель звука: утопленный в корпус кружок, зеркальный светодиоду.
+ * Скромный — это накладка на корпусе, а не элемент интерфейса поверх игры.
+ */
+.sound {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(111, 102, 79, 0.28);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.3);
+  color: #2b271d;
+  cursor: pointer;
+  opacity: 0.55;
+  touch-action: manipulation;
+  transition: opacity 0.15s;
+}
+
+.sound:hover {
+  opacity: 0.9;
+}
+
+.sound:active {
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+.sound:focus-visible {
+  outline: 3px solid #f0e4cd;
+  outline-offset: 3px;
+  opacity: 1;
+}
+
+.sound svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.sound .sound__cone {
+  fill: currentColor;
+}
+
+.sound .sound__waves,
+.sound .sound__cross {
+  stroke: currentColor;
+}
+
+.sound .sound__cross {
+  display: none;
+}
+
+.sound.is-muted .sound__waves {
+  display: none;
+}
+
+.sound.is-muted .sound__cross {
+  display: block;
+}
+
+/*
+ * Кружок нарочно мелкий, а палец — нет: невидимое поле вокруг доводит
+ * область нажатия до вменяемого размера, не раздувая саму накладку.
+ */
+.sound::after {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+}
+
+
+.led {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #5c4030;
+}
+
+.led.is-on {
+  background: #e05a3a;
+  box-shadow: 0 0 16px #e05a3a;
+}
+
+/* ── аттракт-режим: субтитры и финальная плашка ───────────────── */
+
+.caption-scrim {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 190px;
+  pointer-events: none;
+  z-index: 20;
+  background: linear-gradient(180deg, rgba(12, 13, 8, 0) 0%, rgba(12, 13, 8, 0.55) 45%, rgba(12, 13, 8, 0.8) 100%);
+}
+
+.caption {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 46px;
+  z-index: 21;
+  padding: 0 90px;
+  text-align: center;
+  pointer-events: none;
+  font-family: 'PT Sans Narrow', sans-serif;
+  font-size: 34px;
+  letter-spacing: 2px;
+  color: #efe6cd;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.85);
+  text-wrap: pretty;
+}
+
+.title-card {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  background: rgba(16, 17, 11, 0.9);
+  font-family: 'PT Sans Narrow', sans-serif;
+  text-align: center;
+}
+
+.title-card__name {
+  font-size: 82px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  color: #efe6cd;
+  line-height: 1;
+}
+
+.title-card__jp {
+  font-family: 'DotGothic16', 'PT Sans Narrow', sans-serif;
+  font-size: 24px;
+  letter-spacing: 6px;
+  color: #b9ad8c;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.title-card__tagline {
+  font-size: 30px;
+  letter-spacing: 4px;
+  color: #b9ad8c;
+  line-height: 1;
+}
+
+/* На узком экране 82 px не помещаются — плашка сжимается вместе с окном. */
+@media (max-width: 640px) {
+  .caption {
+    font-size: 22px;
+    padding: 0 24px;
+    bottom: 28px;
+  }
+  .title-card__name {
+    font-size: 48px;
+    letter-spacing: 5px;
+  }
+  .title-card__tagline {
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lcd-glow {
+    transition: none;
+  }
+}

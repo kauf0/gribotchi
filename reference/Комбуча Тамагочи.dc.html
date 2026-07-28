@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+  <link href="https://fonts.googleapis.com/css2?family=Handjet:wght@400;600;800&family=PT+Sans+Narrow:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    body { margin: 0; background: #0c0d08; }
+    a { color: #d9c9a3; }
+    a:hover { color: #efe6cd; }
+  </style>
+  <script>window.OM_SCENES = '[{"name":"Заставка","dur":4,"text":"1987 год. Вам подарили гриб. В корпусе."},{"name":"Знакомство","dur":4.5,"text":"День 1. Он маленький, слепой и уже голодный."},{"name":"Кормление","dur":4.5,"text":"Сладкий чай раз в три дня. Спасибо он не скажет."},{"name":"Забыли","dur":5.5,"text":"Вы уехали на две недели. Он считал дни. Все."},{"name":"Обида","dur":5,"text":"Гриб не кричит. Гриб отворачивается и ждёт."},{"name":"Спасение","dur":5.5,"text":"Чай. Сахар. Извинения. Именно в таком порядке."},{"name":"Финал","dur":6,"text":"День 30. Теперь он больше вас."}]';</script>
+  <script>window.OM_PLAYBACK = '{"mode":"times","count":1}';</script>
+  <script>window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "skin": "amber",
+    "sound": true,
+    "motionEditor": true
+  }/*EDITMODE-END*/;</script>
+</helmet>
+<x-import component-from-global-scope="KombuchaPiece" from="./animations-v2.jsx ./tweaks-panel.jsx ./kombucha-scenes.jsx" hint-size="100%,100%"></x-import>
+</x-dc>
+</body>
+</html>

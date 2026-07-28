@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# Ключ API itch.io. Одного `git add -A` хватит, чтобы он уехал в историю
+# репозитория навсегда, поэтому строка стоит первой и трогать её не надо.
+.env
+
+# butler лежит внутри проекта, чтобы ничего не ставить в систему.
+.tools/
+
+# Тяжёлые артефакты хендоффа — спецификация в reference/README.md и кадры в
+# reference/screens/ лежат в репозитории, а видео и wav весят 12 МБ и нужны
+# только для сверки на глаз и на слух.
+reference/komb-video.mp4
+reference/kombucha-score.wav
+Комбуча-3М винтажная игра.zip
+kombucha-score.wav

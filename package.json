@@ -1,0 +1,30 @@
+{
+  "name": "gribochi",
+  "private": true,
+  "version": "0.1.1",
+  "type": "module",
+  "description": "ГРИБОЧИ / グリボッチ — виртуальный чайный гриб в винтажном корпусе",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fonts": "python3 scripts/fetch-fonts.py",
+    "icons": "python3 scripts/make-icons.py",
+    "score": "vite-node scripts/render-score.ts",
+    "boot-sound": "node --experimental-websocket scripts/render-boot.mjs",
+    "shot": "python3 scripts/shot.py",
+    "e2e": "node --experimental-websocket scripts/e2e.mjs",
+    "itch:assets": "node --experimental-websocket scripts/itch-assets.mjs",
+    "butler": "./scripts/get-butler.sh",
+    "publish:itch": "./scripts/publish-itch.sh",
+    "itch:status": "./scripts/itch-status.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

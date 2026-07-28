@@ -10,10 +10,13 @@ import { REPORT, objectNo, dayNo } from '../content/strings'
 import type { Report } from './screenState'
 
 /** Сводка аварийной службы: вердикт по обстановке плюс журнал наблюдений. */
-export function summary(s: GameState, scroll: number): Report {
+export function summary(s: GameState, scroll: number, env?: string): Report {
   // Версия — в сводке, а не на видном месте: она нужна тестеру для отчёта
-  // об ошибке, и экран аварийной службы для того и заведён.
-  const lines = [...diagnose(s), REPORT.version(__APP_VERSION__), '', REPORT.journal]
+  // об ошибке, и экран аварийной службы для того и заведён. Там же строка
+  // об обстановке: как открыта игра и что кнопка «отойти» может сделать.
+  const lines = [...diagnose(s), REPORT.version(__APP_VERSION__)]
+  if (env) lines.push(env)
+  lines.push('', REPORT.journal)
   if (s.journal.length === 0) {
     lines.push(REPORT.empty)
   } else {

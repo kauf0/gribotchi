@@ -21,6 +21,7 @@ import { VISIBLE_LINES } from './view/screens/report'
 import { Audio } from './audio'
 import { intentFor, type Phase, type UiMode } from './ui/controller'
 import { reactionTo, type Signals } from './ui/reactions'
+import { describeEnv, leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
 import { demoFrameAt } from './demo/timeline'
 
 /** Тайминги включения прибора, секунды. */
@@ -197,15 +198,43 @@ function leaveForNow(): void {
   lastInputAt = Number.POSITIVE_INFINITY
   attractSince = null
 
-  // Полноэкранный режим на itch включает родительская страница, и выйти из
-  // него изнутри врезки удаётся не всегда. Гасим прибор в любом случае —
-  // это главное, а полноэкранный выход по возможности.
+  exitFullscreen()
+}
+
+/**
+ * Выход из полноэкранного режима. Способ зависит от того, как открыта игра,
+ * см. ui/leave.ts — вслепую звать exitFullscreen() бесполезно, если режим
+ * включила родительская страница.
+ */
+function currentEnv(): LeaveEnv {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null }
+  return {
+    ownFullscreen: !!(document.fullscreenElement ?? doc.webkitFullscreenElement),
+    embedded: window.top !== window.self,
+    canGoBack: window.history.length > 1,
+  }
+}
+
+function exitFullscreen(): void {
   const doc = document as Document & { webkitExitFullscreen?: () => void }
+  const action = leaveAction(currentEnv())
+
   try {
-    if (document.fullscreenElement) void document.exitFullscreen()
-    else doc.webkitExitFullscreen?.()
+    if (action === 'exit-fullscreen') {
+      if (document.exitFullscreen) void document.exitFullscreen().catch(() => undefined)
+      else doc.webkitExitFullscreen?.()
+    } else if (action === 'ask-parent') {
+      // Изнутри врезки полноэкранный режим родителя не выключить. Просим его
+      // сами: если страница itch этого не слушает, вреда никакого, а прибор
+      // всё равно уже погашен.
+      window.parent.postMessage(LEAVE_MESSAGE, '*')
+    } else if (action === 'go-back') {
+      // Игра открыта отдельной страницей — «выйти» для игрока значит
+      // вернуться туда, откуда он пришёл.
+      window.history.back()
+    }
   } catch {
-    // не дали — не страшно, прибор всё равно выключен
+    // Не дали — прибор всё равно выключен, а это главное.
   }
 }
 
@@ -301,7 +330,7 @@ function handlePress(id: ButtonId): void {
 
     case 'scroll': {
       audio.click()
-      const lines = summary(state, scroll).lines.length
+      const lines = summary(state, scroll, describeEnv(currentEnv())).lines.length
       scroll = Math.max(0, Math.min(maxScroll(lines, VISIBLE_LINES), scroll + intent.delta))
       return
     }
@@ -369,7 +398,7 @@ function buildScreen(t: number): ScreenState {
     return { ...screen, mode: 'death', report: obituary(state) }
   }
   if (ui === 'report') {
-    return { ...screen, mode: 'journal', report: summary(state, scroll) }
+    return { ...screen, mode: 'journal', report: summary(state, scroll, describeEnv(currentEnv())) }
   }
   return screen
 }
@@ -438,7 +467,9 @@ function frame(ms: number): void {
   shell.setLed(ledOn(s, animClock))
   shell.setScreenOn(s.mode !== 'off')
   shell.setShake(...fx.shakeOffset(now))
-  shell.setLeaveVisible(true)
+  // Отходить по делам можно только от работающего прибора: на экране запуска
+  // уходить неоткуда, а кнопка лишь путала бы.
+  shell.setLeaveVisible(phase === 'game')
   audio.update(s.mood, !!s.alarm, now)
 
   requestAnimationFrame(frame)

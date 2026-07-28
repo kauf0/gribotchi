@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { describeEnv, leaveAction, type LeaveEnv } from '../src/ui/leave'
+import { leaveAction, type LeaveEnv } from '../src/ui/leave'
 
 const env = (over: Partial<LeaveEnv> = {}): LeaveEnv => ({
   ownFullscreen: false,
@@ -31,6 +31,10 @@ describe('выход из полноэкранного режима', () => {
   })
 
   it('во врезке просим родительскую страницу', () => {
+    // Проверено на живой странице itch: игра сидит во врезке, полноэкранный
+    // режим принадлежит родителю, и отменить его дочернему документу браузер
+    // не даёт. Сообщение — единственное, что остаётся, и сработает, если itch
+    // когда-нибудь начнёт его слушать.
     // document.exitFullscreen() управляет только своим документом. На itch
     // режим включает страница поверх врезки, и наш fullscreenElement пуст —
     // вызов просто отклонится, поэтому и не работал.
@@ -49,26 +53,6 @@ describe('выход из полноэкранного режима', () => {
   it('идти некуда — просто гасим прибор', () => {
     // Открыли игру прямой ссылкой в новой вкладке: истории нет, врезки нет.
     expect(leaveAction(env())).toBe('stay')
-  })
-
-  it('сводка обстановки называет и место, и план', () => {
-    // Строку читает игрок с телефона и пересказывает — она должна быть
-    // понятной без исходников.
-    expect(describeEnv(env({ embedded: true }))).toBe('ВРЕЗКА · ЭКРАН ЧУЖОЙ · ПРОСИМ СТРАНИЦУ')
-    expect(describeEnv(env({ ownFullscreen: true }))).toBe('СТРАНИЦА · ЭКРАН СВОЙ · ВЫХОД САМИ')
-    expect(describeEnv(env({ canGoBack: true }))).toBe('СТРАНИЦА · ЭКРАН ЧУЖОЙ · НАЗАД')
-    expect(describeEnv(env())).toBe('СТРАНИЦА · ЭКРАН ЧУЖОЙ · ВЫХОДА НЕТ')
-  })
-
-  it('сводка помещается в строку сводки', () => {
-    for (const ownFullscreen of [false, true]) {
-      for (const embedded of [false, true]) {
-        for (const canGoBack of [false, true]) {
-          const line = describeEnv({ ownFullscreen, embedded, canGoBack })
-          expect(line.length).toBeLessThanOrEqual(44)
-        }
-      }
-    }
   })
 
   it('решение определено для всех сочетаний', () => {

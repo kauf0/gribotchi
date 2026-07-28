@@ -21,7 +21,7 @@ import { VISIBLE_LINES } from './view/screens/report'
 import { Audio } from './audio'
 import { intentFor, type Phase, type UiMode } from './ui/controller'
 import { reactionTo, type Signals } from './ui/reactions'
-import { describeEnv, leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
+import { leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
 import { demoFrameAt } from './demo/timeline'
 
 /** Тайминги включения прибора, секунды. */
@@ -179,11 +179,17 @@ let awayMessage =
 let leftAt = 0
 
 /**
- * «Отойти по делам»: гасит прибор и выходит из полноэкранного режима.
+ * «Отойти по делам»: гасит прибор.
  *
  * Время НЕ останавливается — на том, что гриб живёт без владельца, держится
  * вся игра. Это выключатель игрушки, а не паузы: экран гаснет, музыка смолкает,
  * а вернувшись, вы застаёте последствия и слышите, сколько вас не было.
+ *
+ * Из полноэкранного режима кнопка выходит только там, где это вообще возможно.
+ * На itch игра сидит во врезке, полноэкранный режим принадлежит родительской
+ * странице, и браузер не даёт дочернему документу его отменить — проверено на
+ * живой странице. Зато при отдельном размещении (те же GitHub Pages) выход
+ * работает, поэтому разбор обстановки оставлен.
  */
 function leaveForNow(): void {
   const now = clock.now()
@@ -330,7 +336,7 @@ function handlePress(id: ButtonId): void {
 
     case 'scroll': {
       audio.click()
-      const lines = summary(state, scroll, describeEnv(currentEnv())).lines.length
+      const lines = summary(state, scroll).lines.length
       scroll = Math.max(0, Math.min(maxScroll(lines, VISIBLE_LINES), scroll + intent.delta))
       return
     }
@@ -398,7 +404,7 @@ function buildScreen(t: number): ScreenState {
     return { ...screen, mode: 'death', report: obituary(state) }
   }
   if (ui === 'report') {
-    return { ...screen, mode: 'journal', report: summary(state, scroll, describeEnv(currentEnv())) }
+    return { ...screen, mode: 'journal', report: summary(state, scroll) }
   }
   return screen
 }

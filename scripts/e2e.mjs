@@ -178,6 +178,9 @@ async function main() {
       '--headless=new',
       '--disable-gpu',
       '--no-sandbox',
+      // Звук считается по вызовам WebAudio, а не на слух, поэтому выводить
+      // его в динамики машины незачем — это просто мешает работать.
+      '--mute-audio',
       '--hide-scrollbars',
       `--remote-debugging-port=${PORT}`,
       `--user-data-dir=${profile}`,
@@ -488,6 +491,35 @@ async function main() {
         !afterWipe || afterWipe.bornAt !== bornBefore,
         afterWipe ? `bornAt ${bornBefore} → ${afterWipe.bornAt}` : 'сохранения нет',
       )
+    }
+
+    // Ролик по простою. В игре ждать две минуты, здесь — три секунды:
+    // параметр ?idle укорачивает порог и живёт только в разработке. Без него
+    // это поведение оставалось единственным непроверенным в игре.
+    if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+      console.log('  ––   ролик по простою: пропущено (параметр ?idle только в разработке)')
+    } else {
+      const caption = `(() => {
+        const c = document.querySelector('.caption')
+        return { text: c.textContent, shown: +getComputedStyle(c).opacity > 0.05 }
+      })()`
+
+      await cdp.send('Page.navigate', { url: `${URL}?idle=3` })
+      await sleep(1500)
+      check('сразу после загрузки ролик не идёт', !(await evaluate(cdp, caption)).shown)
+
+      await sleep(4500)
+      const running = await evaluate(cdp, caption)
+      check(
+        'после простоя прибор сам показывает ролик',
+        running.shown && running.text.length > 0,
+        running.text,
+      )
+
+      // Любое касание обрывает ролик и возвращает прибор к делу.
+      await realClick(cdp, 20, 20)
+      await sleep(600)
+      check('касание обрывает ролик', !(await evaluate(cdp, caption)).shown)
     }
 
     const errors = await evaluate(cdp, `(window.__errors ?? []).length`)

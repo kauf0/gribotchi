@@ -94,6 +94,8 @@ const chrome = spawn(
     '--headless=new',
     '--disable-gpu',
     '--no-sandbox',
+    // Считаем звук по вызовам WebAudio, слушать его незачем.
+    '--mute-audio',
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${profile}`,
     URL,

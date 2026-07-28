@@ -34,6 +34,14 @@ const AWAY_WORTH_MENTION_MS = 6 * 3600_000
 /** Через столько бездействия прибор сам показывает ролик — как автомат в зале. */
 const IDLE_BEFORE_ATTRACT_MS = 120_000
 
+/**
+ * То же значение, но его можно укоротить параметром ?idle=3 в режиме
+ * разработки. Иначе проверить срабатывание по простою нечем: ждать две
+ * минуты в каждом прогоне теста никто не станет, и оно так и оставалось
+ * единственным непроверенным поведением игры.
+ */
+let idleBeforeAttract = IDLE_BEFORE_ATTRACT_MS
+
 const root = document.getElementById('app')
 if (!root) throw new Error('нет #app')
 
@@ -161,6 +169,7 @@ if (import.meta.env.DEV) {
     forceAttract = true
     attractSince = seed.attract
   }
+  if (seed.idleBeforeAttract !== undefined) idleBeforeAttract = seed.idleBeforeAttract
 }
 
 applySkin(skin)
@@ -448,7 +457,7 @@ function frame(ms: number): void {
 
   // Аттракт-режим: прибор сам показывает ролик, когда его давно не трогали.
   const idle = Date.now() - lastInputAt
-  if (attractSince === null && (forceAttract || (idle > IDLE_BEFORE_ATTRACT_MS && !document.hidden))) {
+  if (attractSince === null && (forceAttract || (idle > idleBeforeAttract && !document.hidden))) {
     attractSince = 0
   }
 

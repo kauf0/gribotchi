@@ -39,6 +39,11 @@ export type UrlSeed = {
   open?: 'report'
   /** Запустить ролик сразу, с указанной секунды: ?attract=20. */
   attract?: number
+  /**
+   * Через сколько секунд простоя прибор сам показывает ролик: ?idle=3.
+   * В игре это две минуты, и ждать их в каждом прогоне теста никто не станет.
+   */
+  idleBeforeAttract?: number
 }
 
 const num = (q: URLSearchParams, key: string): number | undefined => {
@@ -89,6 +94,7 @@ export function readUrlSeed(search: string): UrlSeed {
 
   const open = q.get('open') === 'report' ? ('report' as const) : undefined
   const attract = q.has('attract') ? (num(q, 'attract') ?? 0) : undefined
+  const idle = num(q, 'idle')
 
   return {
     manual: q.has('manual') || Object.keys(patch).length > 0,
@@ -98,5 +104,6 @@ export function readUrlSeed(search: string): UrlSeed {
     sim: Object.keys(sim).length > 0 ? sim : undefined,
     open,
     attract,
+    idleBeforeAttract: idle !== undefined && idle >= 0 ? idle * 1000 : undefined,
   }
 }

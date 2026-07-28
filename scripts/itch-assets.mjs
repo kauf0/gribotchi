@@ -165,6 +165,9 @@ async function shoot(shot) {
       '--headless=new',
       '--disable-gpu',
       '--no-sandbox',
+      // Звук считается по вызовам WebAudio, а не на слух, поэтому выводить
+      // его в динамики машины незачем — это просто мешает работать.
+      '--mute-audio',
       '--hide-scrollbars',
       `--remote-debugging-port=${PORT}`,
       `--user-data-dir=${profile}`,

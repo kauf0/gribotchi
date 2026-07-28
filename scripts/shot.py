@@ -72,6 +72,8 @@ def shot(name: str, query: str) -> str:
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
+            # Снимки немые: звук в динамики машины тут ни к чему.
+            "--mute-audio",
             "--hide-scrollbars",
             "--virtual-time-budget=4000",
             f"--window-size={WINDOW}",

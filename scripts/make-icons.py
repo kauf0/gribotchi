@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Рисует иконки приложения из тех же токенов, что и корпус в игре.
+"""Рисует растровые материалы из тех же токенов, что и корпус в игре:
+иконки приложения и бесшовную плитку клеёнки для фона страницы itch.
 
 Иконка — сам прибор: корпус, тёмный безель, янтарный экран и гриб на нём.
 Значок в 192 пикселя мелкий, поэтому мелочь вроде динамика и подписей
@@ -97,6 +98,30 @@ def draw_icon(size: int, maskable: bool) -> Image.Image:
     return img
 
 
+def draw_cloth_tile() -> Image.Image:
+    """Бесшовная клетчатая клеёнка со стола — та же, что в комнате игры.
+
+    В игре она собрана двумя repeating-linear-gradient в режиме multiply;
+    здесь ровно тот же расчёт, только один раз и в файл. Шаг 46 пикселей,
+    значит период 92 — на этом размере плитка стыкуется сама с собой.
+    """
+    step = 46
+    size = step * 2
+    img = Image.new("RGB", (size, size))
+    d = ImageDraw.Draw(img)
+    warm, cool = (91, 58, 46), (107, 70, 54)
+    for gx in (0, 1):
+        for gy in (0, 1):
+            base = warm if gx == 0 else cool
+            # Вертикальная полоса умножается на чёрный с прозрачностью .25.
+            shade = 0.75 if gy == 0 else 1.0
+            d.rectangle(
+                [gx * step, gy * step, (gx + 1) * step - 1, (gy + 1) * step - 1],
+                fill=tuple(int(c * shade) for c in base),
+            )
+    return img
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     for size in (192, 512):
@@ -107,6 +132,13 @@ def main() -> None:
     # Фавиконка: тот же рисунок, просто мельче.
     draw_icon(64, maskable=False).save(os.path.join(OUT, "favicon.png"))
     print("  favicon.png")
+
+    # Плитка нужна не игре, а странице на itch — кладём рядом с остальными
+    # материалами страницы.
+    itch = os.path.join(ROOT, "itch")
+    os.makedirs(itch, exist_ok=True)
+    draw_cloth_tile().save(os.path.join(itch, "tile-cloth.png"))
+    print("  ../itch/tile-cloth.png")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
  *   → itch/
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,7 +42,24 @@ const SHOTS = [
     // а шрифтам этих же четырёх секунд хватает на загрузку.
     query: 'attract=30.2',
     wait: 4000,
+    hideLeave: true,
     note: 'обложка 630×500',
+  },
+  {
+    // Анимированная обложка: itch крутит GIF прямо в витрине, и живой прибор
+    // там читается несравнимо лучше застывшего. Кадр берётся из игры, а не
+    // из ролика: банка с грибом, пузырьки и мигающий диод зациклены сами по
+    // себе, поэтому склейка не бросается в глаза.
+    name: 'cover-animated',
+    kind: 'gif',
+    width: 630,
+    height: 500,
+    query: 't=4&food=.8&growth=.45&mood=happy&msg=ОБЪЕКТ ЖИВ. ПОКА ЧТО.&bubble=КОРМИ',
+    wait: 3000,
+    seconds: 4,
+    fps: 12,
+    hideLeave: true,
+    note: 'анимированная обложка',
   },
   {
     name: 'screen-1-zapusk',
@@ -68,6 +85,23 @@ const SHOTS = [
       'manual&day=17&food=.05&growth=.26&mold=.8&mood=away&flies=1&scobyTop=18&bubble=ОН ВСЁ ПОМНИТ&msg=ОБЪЕКТ ОТВЕРНУЛСЯ. ОБЪЕКТ ЖДЁТ.',
     wait: 2000,
     note: 'обида: «ОН ВСЁ ПОМНИТ»',
+  },
+  {
+    name: 'wide-1-komnata',
+    width: 960,
+    height: 540,
+    query: 't=4&food=.75&growth=.6&mood=happy&msg=ОБЪЕКТ РАСТЁТ.',
+    wait: 2500,
+    note: 'широкий кадр: прибор на столе',
+  },
+  {
+    name: 'wide-2-final',
+    width: 960,
+    height: 540,
+    query: 'attract=30.2',
+    wait: 4000,
+    hideLeave: true,
+    note: 'широкий кадр: финальная плашка',
   },
   {
     name: 'screen-4-svodka',
@@ -173,12 +207,21 @@ async function shoot(shot) {
     // её из DOM, и кадр становится точь-в-точь как в собранной версии, где
     // панели нет вовсе.
     await cdp.send('Runtime.evaluate', { expression: `document.querySelector('.dbg')?.remove()` })
+    // На обложке кнопка «отойти по делам» лишняя: это орган управления,
+    // а витрина показывает игру. В скриншотах она остаётся — там честно.
+    if (shot.hideLeave) {
+      await cdp.send('Runtime.evaluate', { expression: `document.querySelector('.leave')?.remove()` })
+    }
     await sleep(400)
 
-    const png = await cdp.send('Page.captureScreenshot', { format: 'png' })
-    const path = join(OUT, `${shot.name}.png`)
-    writeFileSync(path, Buffer.from(png.data, 'base64'))
-    console.log(`  ${path.padEnd(30)} ${shot.width}×${shot.height}  ${shot.note}`)
+    if (shot.kind === 'gif') {
+      await recordGif(cdp, shot)
+    } else {
+      const png = await cdp.send('Page.captureScreenshot', { format: 'png' })
+      const path = join(OUT, `${shot.name}.png`)
+      writeFileSync(path, Buffer.from(png.data, 'base64'))
+      console.log(`  ${path.padEnd(30)} ${shot.width}×${shot.height}  ${shot.note}`)
+    }
   } finally {
     cdp?.close()
     chrome.kill()
@@ -189,6 +232,53 @@ async function shoot(shot) {
       // мусор в /tmp не повод падать
     }
   }
+}
+
+/**
+ * Снимает череду кадров и склеивает их в GIF.
+ *
+ * Игра анимируется по реальному времени, останавливать её снаружи нечем,
+ * поэтому кадры берутся как получится, а задержка GIF считается по факту:
+ * так ролик идёт с той же скоростью, что и игра, даже если съёмка шла рывками.
+ */
+async function recordGif(cdp, shot) {
+  const frames = mkdtempSync(join(tmpdir(), 'gribochi-gif-'))
+  const total = Math.round(shot.seconds * shot.fps)
+  const started = Date.now()
+
+  for (let i = 0; i < total; i++) {
+    const png = await cdp.send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(frames, `f${String(i).padStart(4, '0')}.png`), Buffer.from(png.data, 'base64'))
+    const due = started + ((i + 1) * 1000) / shot.fps
+    const left = due - Date.now()
+    if (left > 0) await sleep(left)
+  }
+
+  // Сотые доли секунды на кадр — единица измерения GIF.
+  const delay = Math.max(2, Math.round((Date.now() - started) / total / 10))
+  const path = join(OUT, `${shot.name}.gif`)
+  const out = spawnSync(
+    'convert',
+    [
+      '-delay', String(delay),
+      '-loop', '0',
+      join(frames, 'f*.png'),
+      // Без этого обложка весит под три мегабайта и витрина грузит её
+      // мучительно долго. Палитра у игры и так узкая, поэтому 48 цветов
+      // ничего не портят, а fuzz склеивает шум градиента в комнате.
+      '-fuzz', '5%',
+      '-layers', 'OptimizeTransparency',
+      '-colors', '48',
+      '-layers', 'Optimize',
+      path,
+    ],
+    { encoding: 'utf8' },
+  )
+  rmSync(frames, { recursive: true, force: true })
+  if (out.status !== 0) throw new Error(`convert не справился: ${out.stderr?.slice(0, 200)}`)
+
+  const size = spawnSync('du', ['-h', path], { encoding: 'utf8' }).stdout.split('\t')[0]
+  console.log(`  ${path.padEnd(30)} ${shot.width}×${shot.height}  ${shot.note}, ${total} кадров, ${size}`)
 }
 
 // Необязательный аргумент — снять только подходящие кадры: node … cover

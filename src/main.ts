@@ -210,8 +210,12 @@ if (import.meta.env.DEV) {
         'overfed',
         'death',
       ]
+      // Ночной подаче нужен ночной час: время записи берётся из её метки,
+      // и с дневной строка «ВЛАДЕЛЕЦ НЕ СПИТ» читалась бы как ошибка.
+      const night = new Date(now)
+      night.setHours(3, 40, 0, 0)
       state.journal = Array.from({ length: journal }, (_, i) => ({
-        at: now - (journal - i) * 3600_000,
+        at: kinds[i % kinds.length] === 'night-pour' ? night.getTime() : now - (journal - i) * 3600_000,
         generation: Math.max(1, state.generation - 1),
         day: 8 + i * 3,
         kind: kinds[i % kinds.length],

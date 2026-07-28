@@ -104,12 +104,32 @@ const SHOTS = [
     note: 'широкий кадр: финальная плашка',
   },
   {
-    name: 'screen-4-svodka',
+    name: 'screen-4-podacha',
     width: 560,
     height: 780,
-    query: 't=4&sim.food=.12&sim.mold=.55&sim.growth=.4&sim.resentment=.7&sim.generation=3&sim.journal=3&open=report',
+    // Бланк подачи. Открытый параметром, он не закрывается сам через шесть
+    // секунд — иначе снять его было бы нечем.
+    query: 't=4&sim.food=.35&sim.growth=.45&open=pour',
     wait: 2500,
-    note: 'сводка аварийной службы',
+    note: 'бланк подачи: выбор сорта',
+  },
+  {
+    name: 'screen-5-proisshestvie',
+    width: 560,
+    height: 780,
+    // Какое именно происшествие — решает обстановка в банке, поэтому задаём
+    // плесень: с ней прибор докладывает про мошку.
+    query: 't=4&sim.mold=.6&sim.food=.4&sim.growth=.45&open=incident',
+    wait: 2500,
+    note: 'происшествие на возвращении',
+  },
+  {
+    name: 'screen-6-svodka',
+    width: 560,
+    height: 780,
+    query: 't=4&sim.food=.12&sim.mold=.55&sim.growth=.4&sim.resentment=.7&sim.generation=3&sim.journal=6&open=report',
+    wait: 2500,
+    note: 'сводка: журнал наблюдений',
   },
 ]
 
@@ -209,7 +229,12 @@ async function shoot(shot) {
     // выставляются нужные состояния. Панель отладки при этом лишняя: убираем
     // её из DOM, и кадр становится точь-в-точь как в собранной версии, где
     // панели нет вовсе.
-    await cdp.send('Runtime.evaluate', { expression: `document.querySelector('.dbg')?.remove()` })
+    // Панель отладки и предложение установки — служебные, в витрине им не место.
+    // Предложение вдобавок было бы враньём: на странице itch игра стоит во
+    // врезке, и устанавливать её оттуда браузер не даёт.
+    await cdp.send('Runtime.evaluate', {
+      expression: `document.querySelector('.dbg')?.remove(); document.querySelector('.install')?.remove()`,
+    })
     // На обложке кнопка «отойти по делам» лишняя: это орган управления,
     // а витрина показывает игру. В скриншотах она остаётся — там честно.
     if (shot.hideLeave) {

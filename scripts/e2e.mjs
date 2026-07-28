@@ -503,15 +503,23 @@ async function main() {
         const c = document.querySelector('.caption')
         return { text: c.textContent, shown: +getComputedStyle(c).opacity > 0.05 }
       })()`
+      const playing = async () => (await evaluate(cdp, caption)).shown
 
       await cdp.send('Page.navigate', { url: `${URL}?idle=3` })
       await sleep(1500)
-      check('сразу после загрузки ролик не идёт', !(await evaluate(cdp, caption)).shown)
+      check('сразу после загрузки ролик не идёт', !(await playing()))
 
+      // Прибор ещё не включён: игрок к игре не приступил, и ролик ему незачем.
       await sleep(4500)
+      check('на экране запуска ролик не запускается', !(await playing()))
+
+      // Включаем — теперь простой считается по-настоящему.
+      await realClick(cdp, ...(await centerOf(cdp, 2)))
+      await sleep(3800)
+      await sleep(4000)
       const running = await evaluate(cdp, caption)
       check(
-        'после простоя прибор сам показывает ролик',
+        'в работающей игре простой запускает ролик',
         running.shown && running.text.length > 0,
         running.text,
       )
@@ -519,7 +527,12 @@ async function main() {
       // Любое касание обрывает ролик и возвращает прибор к делу.
       await realClick(cdp, 20, 20)
       await sleep(600)
-      check('касание обрывает ролик', !(await evaluate(cdp, caption)).shown)
+      check('касание обрывает ролик', !(await playing()))
+
+      // После осознанного ухода — тоже незачем: игрок не завис, он ушёл.
+      await evaluate(cdp, `document.querySelector('.leave').click()`)
+      await sleep(5000)
+      check('после «отойти по делам» ролик не запускается', !(await playing()))
     }
 
     const errors = await evaluate(cdp, `(window.__errors ?? []).length`)

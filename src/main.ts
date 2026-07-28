@@ -208,9 +208,6 @@ function leaveForNow(): void {
   phase = 'start'
   ui = 'game'
   prevSignals = null
-  // Ролик после осознанного ухода включаться не должен: игрок не «завис»,
-  // он ушёл. Аттракт вернётся после следующего касания.
-  lastInputAt = Number.POSITIVE_INFINITY
   attractSince = null
 
   exitFullscreen()
@@ -456,8 +453,14 @@ function frame(ms: number): void {
   audio.setThemeAllowed(phase === 'game' || attractSince !== null)
 
   // Аттракт-режим: прибор сам показывает ролик, когда его давно не трогали.
+  //
+  // Только при работающем приборе. На экране запуска и после «отойти по делам»
+  // игрок не завис над игрой — он к ней ещё не приступил или уже ушёл, и
+  // подсовывать ему ролик незачем. Принудительный запуск (?attract=) фазу не
+  // проверяет: им снимают материалы для витрины.
   const idle = Date.now() - lastInputAt
-  if (attractSince === null && (forceAttract || (idle > idleBeforeAttract && !document.hidden))) {
+  const idleEnough = idle > idleBeforeAttract && !document.hidden && phase === 'game'
+  if (attractSince === null && (forceAttract || idleEnough)) {
     attractSince = 0
   }
 

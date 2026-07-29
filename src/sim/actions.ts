@@ -4,7 +4,8 @@
  */
 
 import { clamp01, createState, type GameState } from './state'
-import { remember, type Grade, type JournalEntry } from './journal'
+import { bump, record, type Grade, type JournalEntry } from './journal'
+import { encodeStrain } from './strain'
 import { canBottle, canClean, canFeed, dayOf, diagnose, dominantTea } from './derive'
 import { MSG } from '../content/strings'
 import * as B from './balance'
@@ -26,8 +27,8 @@ export type ActionResult = {
  * Запись о том, что игрок сделал намеренно. Всё, что прибор подмечает сам,
  * живёт в observations.ts — см. правило раздела там.
  */
-const note = (s: GameState, now: number, rest: Partial<JournalEntry>): JournalEntry[] =>
-  remember(s.journal, { at: now, generation: s.generation, day: dayOf(s), ...rest })
+const note = (s: GameState, now: number, rest: Partial<JournalEntry>): GameState =>
+  record(s, { at: now, generation: s.generation, day: dayOf(s), ...rest })
 
 /**
  * ЧАЙ — подача. Оно же извинение: немного гасит обиду сразу.
@@ -78,6 +79,9 @@ export function clean(s: GameState, now: number): ActionResult {
     food: clamp01(s.food - B.CLEAN_FOOD_COST),
     lastCleanedAt: now,
     stressUntil: now + B.CLEAN_STRESS_MS,
+    // Промывок слишком много для журнала, но признакам МЫТЫЙ и ЗАПУЩЕННЫЙ
+    // нужен их счёт — потому счётчик и шире журнала.
+    tally: bump(s.tally, 'clean'),
   }
   return { state, msg: MSG.cleaned, effect: 'wash' }
 }
@@ -97,10 +101,10 @@ export function bottle(s: GameState, now: number): ActionResult {
   // Ступень качества, а не слово: формулировку подберёт слой вида.
   const grade: Grade = s.mold < 0.15 ? 'top' : s.mold < 0.4 ? 'first' : 'second'
   // Сорт партии — итог дневных решений. Поили вразнобой — партия без сорта.
-  const journal = note(s, now, { kind: 'batch', tea: dominantTea(s), grade })
+  const noted = note(s, now, { kind: 'batch', tea: dominantTea(s), grade })
 
   return {
-    state: heir(s, now, B.BOTTLED_START_GROWTH, journal),
+    state: heir(registered(noted), now, B.BOTTLED_START_GROWTH),
     msg: MSG.bottled,
     effect: 'hearts',
   }
@@ -113,41 +117,71 @@ export function bottle(s: GameState, now: number): ActionResult {
 export function nextGeneration(s: GameState, now: number): ActionResult {
   const hasDaughter = s.growth >= B.DAUGHTER_MIN_GROWTH
   // День гибели, а не сегодняшний: извещение могли открыть много позже.
-  const journal = note(s, now, {
+  const noted = note(s, now, {
     kind: 'death',
     day: s.deathDay ?? dayOf(s),
     daughter: hasDaughter,
   })
 
   if (!hasDaughter) {
+    // Новая закваска: признаки объекта уходят вместе с ним, но всё, что про
+    // владельца и род — реестр, рекорд, полученная закваска — остаётся.
     return {
-      state: createState(now, {
-        generation: 1,
-        journal,
-        longestAwayMs: s.longestAwayMs,
-        lastIncidentAt: s.lastIncidentAt,
-      }),
+      state: createState(now, { generation: 1, ...ownersKeep(registered(noted)) }),
       msg: MSG.startedOver,
       effect: 'none',
     }
   }
   return {
-    state: heir(s, now, B.DAUGHTER_START_GROWTH, journal),
+    state: heir(noted, now, B.DAUGHTER_START_GROWTH),
     msg: MSG.daughter,
     effect: 'none',
   }
 }
 
+/**
+ * Что принадлежит владельцу и роду, а не объекту, и потому переживает любую
+ * смену поколения — даже начатую с нуля новую закваску.
+ */
+const ownersKeep = (s: GameState) => ({
+  journal: s.journal,
+  longestAwayMs: s.longestAwayMs,
+  lastIncidentAt: s.lastIncidentAt,
+  crossings: s.crossings,
+  bred: s.bred,
+  offered: s.offered,
+})
+
+/**
+ * Занести доведённый штамм в реестр владельца. Только полный: гриб без
+ * признаков — ещё не штамм, и в реестре ему делать нечего.
+ */
+function registered(s: GameState): GameState {
+  if (s.traits.length === 0) return s
+  const code = encodeStrain({ traits: s.traits, generation: s.generation, crossings: s.crossings })
+  return s.bred.includes(code) ? s : { ...s, bred: [...s.bred, code] }
+}
+
+/**
+ * Скрещивание с полученной закваской.
+ *
+ * Здесь его НЕТ намеренно. Симуляция не решает, что взять у чужого штамма, —
+ * решает владелец, бланком на три кнопки (см. пересадку в main.ts). Иначе
+ * обмен свёлся бы к «вставь код и получи, что дали», а он затевался ради
+ * выбора: у чужого гриба обычно есть ровно тот признак, которого своим не
+ * заработать никогда.
+ *
+ * Поэтому дочерний слой просто несёт полученную закваску дальше, а расходуется
+ * она в момент пересадки.
+ */
 /** Новый гриб от текущего: поколение +1, чуть терпимее родителя. */
-function heir(s: GameState, now: number, growth: number, journal: JournalEntry[]): GameState {
+function heir(s: GameState, now: number, growth: number): GameState {
   return createState(now, {
+    ...ownersKeep(s),
     generation: s.generation + 1,
     growth,
     resentFactor: Math.max(B.HEIR_RESENT_FACTOR_MIN, s.resentFactor * B.HEIR_RESENT_FACTOR),
-    // Рекорд отсутствия и пауза происшествий — про владельца, и смерть гриба
-    // их не отменяет.
-    longestAwayMs: s.longestAwayMs,
-    lastIncidentAt: s.lastIncidentAt,
-    journal,
+    // Признаки — это и есть штамм: дочерний слой наследует все три.
+    traits: s.traits,
   })
 }

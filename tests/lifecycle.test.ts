@@ -13,6 +13,7 @@ import { canBottle, dayOf, dominantTea, moodOf, overdueDays } from '../src/sim/d
 import { load, save } from '../src/sim/persist'
 import { journalLine } from '../src/view/reports'
 import { incidentFor } from '../src/sim/incidents'
+import { encodeStrain } from '../src/sim/strain'
 import * as B from '../src/sim/balance'
 
 const T0 = 1_700_000_000_000
@@ -320,6 +321,77 @@ describe('сохранение', () => {
     const back = load(T0, store).state
     expect(back.lastIncidentAt).toBeLessThanOrEqual(T0)
     expect(incidentFor(back, B.ABSENCE_WORTH_NOTING_MS + 1, T0)).toBe('flies')
+  })
+
+  it('сохранение без штамма открывается и начинает считать с этого момента', () => {
+    // История до обновления неизвестна, выдумывать её нельзя: счётчик с нуля,
+    // признаки начнут закрепляться теперь.
+    const store = memory()
+    const old = { ...createState(T0), generation: 4, growth: 0.6, mold: 0.42 } as Record<string, unknown>
+    delete old.tally
+    delete old.maxMold
+    delete old.traits
+    delete old.bred
+    delete old.offered
+    delete old.crossings
+    store.setItem('gribochi.save.v1', JSON.stringify(old))
+
+    const back = load(T0, store)
+    expect(back.fresh).toBe(false)
+    expect(back.state.generation).toBe(4)
+    expect(back.state.tally).toEqual({})
+    expect(back.state.traits).toEqual([])
+    expect(back.state.bred).toEqual([])
+    expect(back.state.offered).toBe(null)
+    // Худшая плесень — не ноль, а нынешняя: она заведомо не меньше правды,
+    // и гриб, которого только что вытащили, не теряет право на ЖИЛИСТОГО.
+    expect(back.state.maxMold).toBeGreaterThanOrEqual(0.42)
+  })
+
+  it('штамм переживает запись и чтение', () => {
+    const store = memory()
+    const code = encodeStrain({ traits: ['wiry'], generation: 2, crossings: 0 })
+    save(
+      {
+        ...createState(T0),
+        traits: ['wiry', 'healing'],
+        tally: { overfed: 4, clean: 9 },
+        maxMold: 0.81,
+        crossings: 2,
+        bred: [code],
+        offered: code,
+      },
+      store,
+    )
+    const back = load(T0, store).state
+    expect(back.traits).toEqual(['wiry', 'healing'])
+    expect(back.tally).toEqual({ overfed: 4, clean: 9 })
+    expect(back.maxMold).toBeCloseTo(0.81, 10)
+    expect(back.crossings).toBe(2)
+    expect(back.bred).toEqual([code])
+    expect(back.offered).toBe(code)
+  })
+
+  it('битый штамм отбрасывается, а сохранение остаётся', () => {
+    // Чужой формат в реестре хуже пустого реестра.
+    const store = memory()
+    const good = encodeStrain({ traits: ['wiry'], generation: 1, crossings: 0 })
+    const dirty = { ...createState(T0) } as Record<string, unknown>
+    dirty.traits = ['wiry', 'неизвестный', 42, 'healing', 'devoted', 'stout']
+    dirty.tally = { overfed: 'много', clean: -3, 'night-pour': 2.7 }
+    dirty.maxMold = 'мокро'
+    dirty.bred = [good, 'МУСОР', '', good]
+    dirty.offered = 'НЕВЕРНО'
+    store.setItem('gribochi.save.v1', JSON.stringify(dirty))
+
+    const back = load(T0, store)
+    expect(back.fresh).toBe(false)
+    // Мест всего три, и чужие ключи выброшены.
+    expect(back.state.traits).toEqual(['wiry', 'healing', 'devoted'])
+    expect(back.state.tally).toEqual({ 'night-pour': 2 })
+    expect(back.state.maxMold).toBe(back.state.mold)
+    expect(back.state.bred).toEqual([good])
+    expect(back.state.offered).toBe(null)
   })
 
   it('обрезанное сохранение отбрасывается целиком', () => {

@@ -50,5 +50,6 @@ export function project(s: GameState, t: number, fx: FxSnapshot): ScreenState {
     washing: fx.washing,
     msg: fx.msg ?? idleMessage(s),
     bubble: fx.bubble,
+    traits: s.traits,
   }
 }

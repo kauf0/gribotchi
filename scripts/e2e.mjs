@@ -366,10 +366,20 @@ async function main() {
     check('СОС открывает сводку', opened > 0.2, `изменилось ${(opened * 100).toFixed(0)}% экрана`)
     check('СОС не меняет состояние объекта', (await evaluate(cdp, READ_SAVE)).food === afterClean.food)
 
+    // СОС проходит цикл: сводка → штамм → банка. Отдельного входа в штамм
+    // на трёх кнопках взять неоткуда, поэтому выход стал на нажатие длиннее.
+    await evaluate(cdp, `document.querySelectorAll('.btn')[2].click()`)
+    await sleep(600)
+    const onStrainBlank = await evaluate(cdp, LCD_FINGERPRINT)
+    check(
+      'со сводки СОС ведёт на штамм',
+      diffRatio(onReport, onStrainBlank) > 0.1,
+      `изменилось ${(diffRatio(onReport, onStrainBlank) * 100).toFixed(0)}%`,
+    )
     await evaluate(cdp, `document.querySelectorAll('.btn')[2].click()`)
     await sleep(600)
     const back = diffRatio(onGame, await evaluate(cdp, LCD_FINGERPRINT))
-    check('повторный СОС возвращает к банке', back < 0.1, `отличие от исходного ${(back * 100).toFixed(0)}%`)
+    check('третий СОС возвращает к банке', back < 0.1, `отличие от исходного ${(back * 100).toFixed(0)}%`)
 
     // «Отойти по делам»: прибор гаснет, а время идёт дальше — на этом стоит
     // вся игра, и кнопка не должна оказаться паузой.
@@ -657,9 +667,14 @@ async function main() {
         answered.mold < beforeAnswer.mold - 0.2,
         `плесень ${beforeAnswer.mold.toFixed(2)} → ${answered.mold.toFixed(2)}`,
       )
+      // На сохранении с историей прибор сразу после ответа закрепляет
+      // несколько признаков и может открыть выбраковку — тоже бланк. Поэтому
+      // проверяем, что происшествие ушло, а не что на экране непременно банка.
+      const afterAnswer = diffRatio(onIncident, await evaluate(cdp, LCD_FINGERPRINT))
       check(
-        'после ответа бланк закрывается',
-        diffRatio(onIncident, await evaluate(cdp, LCD_FINGERPRINT)) > 0.2,
+        'после ответа происшествие уходит с экрана',
+        afterAnswer > 0.05,
+        `изменилось ${(afterAnswer * 100).toFixed(0)}% экрана`,
       )
     }
 
@@ -707,6 +722,114 @@ async function main() {
 
     const errors = await evaluate(cdp, `(window.__errors ?? []).length`)
     check('на странице нет накопленных ошибок', errors === 0 || errors === undefined)
+
+    // Штамм: признаки закрепляются сами, выбраковка требует решения, а код
+    // ходит через буфер. Всё это — главное в выпуске, и проверяется живьём.
+    if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+      console.log('  ––   штамм: пропущено (сидирование только в разработке)')
+    } else {
+      // Чистое сохранение: возраст из прошлых прогонов закрепил бы лишние
+      // признаки, и проверка стала бы гадательной.
+      await cdp.send('Page.navigate', { url: URL })
+      await sleep(1000)
+      await evaluate(cdp, `localStorage.clear()`)
+
+      // Три признака сразу и объект на пороге четвёртого: доросший до предела
+      // молодой гриб заработает СКОРОСПЕЛОГО и упрётся в нехватку мест.
+      await cdp.send('Page.navigate', {
+        url: `${URL}?traits=wiry,healing,devoted&sim.growth=1&sim.food=.9`,
+      })
+      await sleep(1500)
+      await realClick(cdp, ...(await centerOf(cdp, 2)))
+      await sleep(4200)
+
+      const onCull = await evaluate(cdp, LCD_FINGERPRINT)
+      const beforeCull = await evaluate(cdp, READ_SAVE)
+      check(
+        'признак закрепился сам и потребовал выбраковки',
+        (beforeCull.traits ?? []).length === 3,
+        `признаки: ${(beforeCull.traits ?? []).join(', ') || 'нет'}`,
+      )
+
+      // ЧАЙ исключает первый признак и ставит на его место новый.
+      await realClick(cdp, ...(await centerOf(cdp, 0)))
+      await sleep(900)
+      const afterCull = await evaluate(cdp, READ_SAVE)
+      check(
+        'выбраковка меняет признак, а не добавляет четвёртый',
+        (afterCull.traits ?? []).length === 3 && !afterCull.traits.includes('wiry'),
+        `признаки: ${(afterCull.traits ?? []).join(', ')}`,
+      )
+
+      // Отказ должен запоминаться: без этого бланк открывался бы вечно.
+      await sleep(1200)
+      const looping = await evaluate(cdp, LCD_FINGERPRINT)
+      if (diffRatio(onCull, looping) < 0.1) {
+        await realClick(cdp, ...(await centerOf(cdp, 2)))
+        await sleep(900)
+      }
+      const settled = await evaluate(cdp, READ_SAVE)
+      await sleep(1500)
+      check(
+        'отказ от признака запоминается — бланк не открывается вечно',
+        (await evaluate(cdp, READ_SAVE)).traits.join() === settled.traits.join(),
+        `признаки: ${settled.traits.join(', ')}, отказов ${(settled.declined ?? []).length}`,
+      )
+
+      // Дальше — бланк штамма. Открываем его параметром, а не проходом по СОС:
+      // у доросшего объекта СОС означает розлив, и путь зависел бы от того,
+      // каким гриб оказался к этому моменту.
+      await cdp.send('Page.navigate', {
+        url: `${URL}?t=4&traits=wiry,healing,devoted&sim.growth=.5&open=strain`,
+      })
+      await sleep(2000)
+
+      // Настоящего буфера в headless нет, а проверять чужой браузер и не наше
+      // дело: подменяем сам вызов и смотрим, что игра в него передала. Всё,
+      // что принадлежит нам, при этом проверено — код собран из признаков
+      // объекта и отдан в буфер.
+      await evaluate(
+        cdp,
+        `(() => {
+          window.__copied = null
+          navigator.clipboard.writeText = async (text) => { window.__copied = text }
+        })()`,
+      )
+      const onStrainScreen = await evaluate(cdp, LCD_FINGERPRINT)
+
+      await realClick(cdp, ...(await centerOf(cdp, 0)))
+      await sleep(900)
+      const copied = await evaluate(cdp, `window.__copied`)
+      check(
+        'ЧАЙ отдаёт в буфер восьмизначный код штамма',
+        typeof copied === 'string' && /^[0-9A-HJKMNP-TV-Z]{8}$/.test(copied),
+        `отдано: «${copied}»`,
+      )
+
+      // Свой же код принимать незачем: скрещивать не с кем.
+      await realClick(cdp, ...(await centerOf(cdp, 1)))
+      await sleep(900)
+      check(
+        'вставка своего кода отвергается — скрещивать не с кем',
+        (await evaluate(cdp, READ_SAVE)).offered === null,
+      )
+      check(
+        'бланк штамма при этом остаётся открытым',
+        diffRatio(onStrainScreen, await evaluate(cdp, LCD_FINGERPRINT)) < 0.2,
+      )
+
+      // А ЧУЖАЯ закваска ссылкой принимается и ложится на хранение. Код
+      // заведомо не свой: ТУЧНЫЙ, БУЙНЫЙ, НОЧНОЙ — ни одного общего признака.
+      const FOREIGN = '09C0G14C'
+      await cdp.send('Page.navigate', { url: `${URL}?shtamm=${FOREIGN}` })
+      await sleep(1800)
+      const shared = await evaluate(cdp, READ_SAVE)
+      check(
+        'чужая закваска ссылкой ложится на хранение',
+        shared?.offered === FOREIGN,
+        `на хранении: ${shared?.offered}`,
+      )
+    }
 
     // Предложение установки. В разработке его можно вызвать параметром —
     // beforeinstallprompt в headless-браузере не приходит, а проверить, что

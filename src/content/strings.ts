@@ -118,6 +118,86 @@ export const INCIDENT = {
   },
 } as const
 
+/**
+ * Признаки штамма. Названия в родительном падеже не нужны: прибор перечисляет
+ * их списком, а не строит фразы.
+ */
+export const TRAIT_NAMES = {
+  stout: 'ТУЧНЫЙ',
+  lean: 'ПОСТНЫЙ',
+  greedy: 'ЖАДНЫЙ',
+  even: 'РОВНЫЙ',
+  wiry: 'ЖИЛИСТЫЙ',
+  sterile: 'СТЕРИЛЬНЫЙ',
+  neglected: 'ЗАПУЩЕННЫЙ',
+  scrubbed: 'МЫТЫЙ',
+  healing: 'ЦЕЛЕБНЫЙ',
+  wild: 'БУЙНЫЙ',
+  strict: 'СТРОГИЙ',
+  motley: 'ПЁСТРЫЙ',
+  nocturnal: 'НОЧНОЙ',
+  diurnal: 'ДНЕВНОЙ',
+  shift: 'СМЕННЫЙ',
+  spiteful: 'ЗЛОПАМЯТНЫЙ',
+  forgiving: 'ОТХОДЧИВЫЙ',
+  devoted: 'ПРЕДАННЫЙ',
+  abandoned: 'БРОШЕННЫЙ',
+  early: 'СКОРОСПЕЛЫЙ',
+  slow: 'ДОЛГИЙ',
+  stunted: 'ТУГОЙ',
+  ancient: 'ВЕКОВОЙ',
+  seasoned: 'БЫВАЛЫЙ',
+  generous: 'ЩЕДРЫЙ',
+  litigious: 'СУТЯЖНЫЙ',
+  careful: 'ОСТОРОЖНЫЙ',
+  firstborn: 'ПЕРВЕНЕЦ',
+  longline: 'ДОЛГОЛЕТНИЙ',
+  foundling: 'ПОДКИДЫШ',
+} as const
+
+/** Бланк выбраковки: мест три, признак четвёртый. */
+export const CULL = {
+  title: 'ВЫБРАКОВКА',
+  gained: (name: string) => `НОВЫЙ ПРИЗНАК: ${name}`,
+  full: 'МЕСТ ЗАНЯТО: 3 ИЗ 3',
+  drop: (name: string) => `ИСКЛЮЧИТЬ ${name}`,
+  keep: 'ОТКАЗАТЬСЯ ОТ НОВОГО',
+  hint: 'ЧАЙ · МЫТЬ · СОС',
+  dropped: (name: string) => `ПРИЗНАК ИСКЛЮЧЁН: ${name}`,
+  refused: 'ПРИЗНАК НЕ ПРИНЯТ.',
+  fixed: (name: string) => `ПРИЗНАК ЗАКРЕПЛЁН: ${name}`,
+} as const
+
+/**
+ * Бланк пересадки: что взять у чужой закваски. Появляется при смене поколения,
+ * если закваска лежит на хранении.
+ */
+export const GRAFT = {
+  title: 'ПЕРЕСАДКА',
+  intro: 'ПОЛУЧЕНА ЧУЖАЯ ЗАКВАСКА.',
+  prompt: 'ВЗЯТЬ ОДИН ПРИЗНАК:',
+  take: (name: string) => `ВЗЯТЬ ${name}`,
+  refuse: 'ОТКАЗАТЬСЯ',
+  refused: 'ЗАКВАСКА НЕ ПРИНЯТА.',
+  hint: 'ЧАЙ · МЫТЬ · СОС',
+} as const
+
+/** Бланк штамма: удостоверение и обмен закваской. */
+export const STRAIN = {
+  title: 'ШТАММ',
+  none: 'ПРИЗНАКОВ НЕТ. ШТАММ НЕ ОПРЕДЕЛЁН.',
+  registry: (bred: number) => `ВЫВЕДЕНО ШТАММОВ: ${bred}`,
+  hint: 'ЧАЙ — КОПИЯ · МЫТЬ — ВСТАВКА · СОС',
+  copied: 'КОД СКОПИРОВАН.',
+  copyFailed: 'КОПИЯ НЕ ВЫШЛА. ПЕРЕПИШИТЕ КОД.',
+  pasteFailed: 'ЗАКВАСКИ В БУФЕРЕ НЕТ.',
+  badCode: 'КОД НЕ ОПОЗНАН. ПРОВЕРЬТЕ ЗНАКИ.',
+  ownCode: 'ЭТО ВАШ ЖЕ ШТАММ.',
+  accepted: 'ЗАКВАСКА ПРИНЯТА К ХРАНЕНИЮ.',
+  offered: (code: string) => `НА ХРАНЕНИИ: ${code}`,
+  offeredHint: 'ПОЙДЁТ В ДЕЛО ПРИ СМЕНЕ ПОКОЛЕНИЯ.',
+} as const
+
 export const BUBBLE = {
   feedMe: 'КОРМИ',
   remembers: 'ОН ВСЁ ПОМНИТ',
@@ -158,7 +238,7 @@ export const REPORT = {
   title: 'СВОДКА',
   journal: 'ЖУРНАЛ НАБЛЮДЕНИЙ:',
   empty: 'ЗАПИСЕЙ НЕТ.',
-  hint: 'ЧАЙ ↑   МЫТЬ ↓   СОС — ВЫХОД',
+  hint: 'ЧАЙ ↑  МЫТЬ ↓  СОС — ШТАММ',
   deathHint: 'СОС — ПРОДОЛЖИТЬ',
   ceased: 'ПРЕКРАТИЛ СУЩЕСТВОВАНИЕ.',
   daughterFound: 'ОБНАРУЖЕН ДОЧЕРНИЙ СЛОЙ.',

@@ -19,7 +19,7 @@
 import * as B from './balance'
 import { dayOf } from './derive'
 import type { GameState } from './state'
-import { lastOf, remember, type JournalEntry } from './journal'
+import { lastOf, record, type JournalEntry } from './journal'
 
 /**
  * Обстоятельства, которых симуляция знать не может.
@@ -99,10 +99,9 @@ export function noteReturn(s: GameState, awayMs: number, occ: Occasion): GameSta
   if (awayMs < B.ABSENCE_WORTH_NOTING_MS) return s
 
   const hours = Math.floor(awayMs / 3600_000)
-  const record = awayMs > s.longestAwayMs
-  return {
-    ...s,
-    longestAwayMs: Math.max(s.longestAwayMs, awayMs),
-    journal: remember(s.journal, entry(s, occ, { kind: record ? 'absence-record' : 'absence', hours })),
-  }
+  const best = awayMs > s.longestAwayMs
+  return record(
+    { ...s, longestAwayMs: Math.max(s.longestAwayMs, awayMs) },
+    entry(s, occ, { kind: best ? 'absence-record' : 'absence', hours }),
+  )
 }

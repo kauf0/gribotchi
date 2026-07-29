@@ -13,7 +13,7 @@
 import * as B from './balance'
 import { clamp01, type GameState } from './state'
 import { dayOf } from './derive'
-import { remember } from './journal'
+import { bump, record } from './journal'
 import { INCIDENT } from '../content/strings'
 import type { ActionResult, Effect } from './actions'
 
@@ -61,24 +61,22 @@ export function answer(
     resentment?: number
   }
 
-  const state: GameState = {
-    ...s,
-    food: clamp01(s.food + (d.food ?? 0)),
-    growth: clamp01(s.growth + (d.growth ?? 0)),
-    mold: clamp01(s.mold + (d.mold ?? 0)),
-    resentment: clamp01(s.resentment + (d.resentment ?? 0)),
-    lastIncidentAt: now,
+  const state: GameState = record(
+    {
+      ...s,
+      food: clamp01(s.food + (d.food ?? 0)),
+      growth: clamp01(s.growth + (d.growth ?? 0)),
+      mold: clamp01(s.mold + (d.mold ?? 0)),
+      resentment: clamp01(s.resentment + (d.resentment ?? 0)),
+      lastIncidentAt: now,
+      // Каким ответом отделались — отдельным счётом: на нём стоят признаки
+      // ЩЕДРЫЙ и СУТЯЖНЫЙ, а записей о происшествиях в журнале всего двадцать.
+      tally: bump(s.tally, `answer-${index}` as const),
+    },
     // Как поступил владелец — запись про него, а не про гриб: журнал для того
     // и перестроен, чтобы помнить решения, а не только события.
-    journal: remember(s.journal, {
-      at: now,
-      generation: s.generation,
-      day: dayOf(s),
-      kind: 'incident',
-      incident: kind,
-      answer: index,
-    }),
-  }
+    { at: now, generation: s.generation, day: dayOf(s), kind: 'incident', incident: kind, answer: index },
+  )
 
   return { state, msg: INCIDENT[kind].msg[index], effect: effectOf(d) }
 }

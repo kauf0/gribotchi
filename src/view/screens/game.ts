@@ -3,7 +3,7 @@
 import { Lcd } from '../lcd'
 import type { ScreenState } from '../screenState'
 import { drawHud } from '../draw/hud'
-import { drawJar, drawTea, drawBubbles, TEA_FLOOR } from '../draw/jar'
+import { drawJar, drawTea, drawBubbles, JAR, TEA_FLOOR } from '../draw/jar'
 import { drawScoby } from '../draw/scoby'
 import { drawSugar, drawHearts, drawFlies } from '../draw/fx'
 import { drawAlarm, drawMessage, drawBubble } from '../draw/overlays'
@@ -43,6 +43,9 @@ export function drawGame(lcd: Lcd, s: ScreenState): void {
     mold: s.mold,
     t: s.t,
     floor: TEA_FLOOR,
+    traits: s.traits,
+    // Гриб растёт внутри банки: за стекло не выходит даже самый буйный штамм.
+    maxHalfWidth: JAR.teaW / 2,
   })
 
   drawSugar(lcd, s.t, s.sugar ?? 0)

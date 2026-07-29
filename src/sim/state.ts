@@ -5,7 +5,8 @@
  */
 
 import { TEA_KEYS, type TeaKey } from './balance'
-import type { JournalEntry } from './journal'
+import type { JournalEntry, Tally } from './journal'
+import type { TraitKey } from './traits'
 
 export type { JournalEntry } from './journal'
 
@@ -69,6 +70,46 @@ export type GameState = {
   lastIncidentAt: number
 
   journal: JournalEntry[]
+
+  /**
+   * Несжимаемый счётчик событий за жизнь поколения — см. journal.ts. Журнал
+   * вытесняется, а признаки считают повторы, поэтому счёт ведётся отдельно.
+   */
+  tally: Tally
+
+  /**
+   * Худшее, что объект пережил. Хранится, а не выводится: плесень уходит
+   * с промывкой, а память о ней — нет, и на этом стоит признак ЖИЛИСТЫЙ.
+   */
+  maxMold: number
+
+  /**
+   * Признаки штамма, не больше трёх. Закрепляются по ходу жизни и наследуются
+   * дочерним слоем; четвёртый требует выбраковки.
+   */
+  traits: TraitKey[]
+
+  /**
+   * Признаки, от которых владелец отказался на выбраковке. Без этого списка
+   * отказ ничего не значил бы: условие всё ещё выполнено, и на следующем же
+   * кадре прибор снова требовал бы решения — бланк не закрылся бы никогда.
+   */
+  declined: TraitKey[]
+
+  /**
+   * Сколько скрещиваний было в роду. Идёт в код штамма и даёт признак
+   * ПОДКИДЫШ. Принадлежит роду, а не объекту.
+   */
+  crossings: number
+
+  /** Коды выведенных штаммов. Реестр владельца — наследуется навсегда. */
+  bred: string[]
+
+  /**
+   * Полученная от другого игрока закваска: код штамма ждёт смены поколения.
+   * Ничего не затирает — выбор скрещивать или нет остаётся за владельцем.
+   */
+  offered: string | null
 }
 
 export type NewLifeOpts = {
@@ -78,6 +119,10 @@ export type NewLifeOpts = {
   journal?: JournalEntry[]
   longestAwayMs?: number
   lastIncidentAt?: number
+  traits?: TraitKey[]
+  crossings?: number
+  bred?: string[]
+  offered?: string | null
 }
 
 export function createState(now: number, opts: NewLifeOpts = {}): GameState {
@@ -105,6 +150,16 @@ export function createState(now: number, opts: NewLifeOpts = {}): GameState {
     longestAwayMs: opts.longestAwayMs ?? 0,
     lastIncidentAt: opts.lastIncidentAt ?? 0,
     journal: opts.journal ?? [],
+    // Счётчик и худшая плесень — про конкретный объект, у наследника с нуля.
+    tally: {},
+    maxMold: 0,
+    // Признаки, род и реестр переживают поколение: это уже про линию и владельца.
+    traits: opts.traits ?? [],
+    // Отказы — про конкретный объект: у наследника всё начинается заново.
+    declined: [],
+    crossings: opts.crossings ?? 0,
+    bred: opts.bred ?? [],
+    offered: opts.offered ?? null,
   }
 }
 

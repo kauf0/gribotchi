@@ -16,7 +16,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,6 +25,11 @@ const PORT = 9511
 const OUT = 'itch'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/** Размер PNG из заголовка IHDR — чтобы сверять снятое с заказанным. */
+const pngSize = (buf) => ({ width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) })
+
+let failures = 0
 
 /**
  * Что снимаем. Размеры разные не случайно: обложка itch — 630×500, а скриншоты
@@ -104,6 +109,27 @@ const SHOTS = [
     note: 'широкий кадр: финальная плашка',
   },
   {
+    // Промо к выпуску штаммов: каталог образцов. Широкий кадр для девлога
+    // и записи в чат.
+    name: 'promo-shtammy',
+    page: 'promo.html',
+    width: 1200,
+    height: 630,
+    query: 'w=1200&h=630&cols=4&n=8',
+    wait: 2500,
+    note: 'промо: каталог штаммов',
+  },
+  {
+    // Она же обложкой itch — в пропорции витрины.
+    name: 'cover-shtammy',
+    page: 'promo.html',
+    width: 630,
+    height: 500,
+    query: 'w=630&h=500&cols=2&n=4',
+    wait: 2500,
+    note: 'обложка: каталог штаммов',
+  },
+  {
     name: 'screen-4-podacha',
     width: 560,
     height: 780,
@@ -178,7 +204,9 @@ const FONTS_READY = `(async () => {
 
 async function shoot(shot) {
   const profile = mkdtempSync(join(tmpdir(), 'gribochi-asset-'))
-  const url = `${URL}?${encode(shot.query)}`
+  // Кадры витрины снимаются со своей страницы: каталог штаммов собирается
+  // не игрой, а отдельной вёрсткой — но грибы в нём рисует код игры.
+  const url = `${URL}${shot.page ?? ''}?${encode(shot.query)}`
   const chrome = spawn(
     'google-chrome',
     [
@@ -214,10 +242,25 @@ async function shoot(shot) {
     cdp = await connect(target.webSocketDebuggerUrl)
     await cdp.send('Runtime.enable')
     await cdp.send('Page.enable')
+
+    /*
+     * Точный вьюпорт. Раньше размер задавался только --window-size, и в него
+     * входила обвязка окна: все кадры выходили короче заказанного примерно
+     * на 143 пикселя — обложка 630×357 вместо 630×500. В логе при этом стоял
+     * ЗАПРОШЕННЫЙ размер, поэтому подмена и не всплывала.
+     */
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: shot.width,
+      height: shot.height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    })
     await sleep(shot.wait)
 
+    // Проверка ищет подписи корпуса — на страницах витрины их нет, и ложное
+    // предупреждение только приучало бы не читать вывод.
     const { result } = await cdp.send('Runtime.evaluate', {
-      expression: FONTS_READY,
+      expression: shot.page ? 'document.fonts.ready.then(() => true)' : FONTS_READY,
       awaitPromise: true,
       returnByValue: true,
     })
@@ -248,7 +291,14 @@ async function shoot(shot) {
       const png = await cdp.send('Page.captureScreenshot', { format: 'png' })
       const path = join(OUT, `${shot.name}.png`)
       writeFileSync(path, Buffer.from(png.data, 'base64'))
-      console.log(`  ${path.padEnd(30)} ${shot.width}×${shot.height}  ${shot.note}`)
+      // Размер берём из файла, а не из заказа: иначе рассинхрон снова
+      // останется незамеченным.
+      const got = pngSize(readFileSync(path))
+      const ok = got.width === shot.width && got.height === shot.height
+      console.log(
+        `  ${path.padEnd(30)} ${got.width}×${got.height}${ok ? '' : ` (ЗАКАЗАНО ${shot.width}×${shot.height})`}  ${shot.note}`,
+      )
+      if (!ok) failures++
     }
   } finally {
     cdp?.close()
@@ -316,4 +366,8 @@ if (!chosen.length) throw new Error(`нет кадров с именем «${fil
 
 mkdirSync(OUT, { recursive: true })
 for (const shot of chosen) await shoot(shot)
+if (failures > 0) {
+  console.error(`\nНе тот размер у ${failures} кадров — витрину так выкладывать нельзя.`)
+  process.exit(1)
+}
 console.log(`\nГотово. Описание страницы — ${OUT}/description.md`)

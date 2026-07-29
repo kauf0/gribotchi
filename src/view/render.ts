@@ -20,10 +20,13 @@ export function render(lcd: Lcd, s: ScreenState): void {
       drawBoot(lcd, s)
       return
     case 'journal':
-    // Бланки подачи и происшествия — тот же бланк аварийной службы,
-    // заполненный иначе: заголовок, строки, полоса подсказки внизу.
+    // Все бланки — та же раскладка аварийной службы, заполненная иначе:
+    // заголовок, строки, полоса подсказки внизу.
     case 'pour':
     case 'incident':
+    case 'cull':
+    case 'graft':
+    case 'strain':
       drawReport(lcd, s)
       return
     case 'death':

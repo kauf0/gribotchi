@@ -7,9 +7,11 @@
  * ScreenState, и его рисует тот же код.
  */
 
+import type { TraitKey } from '../sim/traits'
+
 export type Mood = 'happy' | 'ok' | 'sad' | 'angry' | 'away' | 'dead'
 
-export type ScreenMode = 'start' | 'off' | 'boot' | 'game' | 'journal' | 'death' | 'pour' | 'incident'
+export type ScreenMode = 'start' | 'off' | 'boot' | 'game' | 'journal' | 'death' | 'pour' | 'incident' | 'cull' | 'graft' | 'strain'
 
 /**
  * Экран запуска. Он же — та самая нажатая кнопка, без которой браузер не даёт
@@ -61,6 +63,12 @@ export type ScreenState = {
   start?: StartCard
 
   generation?: number
+
+  /**
+   * Признаки штамма: от них зависит силуэт гриба. Шов цел — симуляция
+   * по-прежнему не знает о пикселях, а вид не знает об условиях закрепления.
+   */
+  traits?: TraitKey[]
 }
 
 export type Report = {

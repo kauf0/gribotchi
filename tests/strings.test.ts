@@ -11,9 +11,22 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { MSG, BUBBLE, INCIDENT, JOURNAL, POUR, REPORT, START, overdue, wereAway } from '../src/content/strings'
+import {
+  MSG,
+  BUBBLE,
+  INCIDENT,
+  JOURNAL,
+  POUR,
+  REPORT,
+  START,
+  TRAIT_NAMES,
+  overdue,
+  wereAway,
+} from '../src/content/strings'
 import { INCIDENT_KINDS } from '../src/sim/balance'
-import { pourBlank, incidentBlank } from '../src/view/reports'
+import { pourBlank, incidentBlank, cullBlank, graftBlank, strainBlank } from '../src/view/reports'
+import { TRAIT_KEYS } from '../src/sim/traits'
+import { createState } from '../src/sim/state'
 import { VISIBLE_LINES } from '../src/view/screens/report'
 
 /** Строка служебных сообщений внизу экрана. */
@@ -120,6 +133,32 @@ describe('длина текстов', () => {
       // Строка внизу экрана после ответа — там предел строже.
       for (const msg of INCIDENT[kind].msg) check(`INCIDENT.${kind}.msg`, msg, MSG_LIMIT)
     }
+  })
+
+  it('бланки штамма, выбраковки и пересадки помещаются в экран', () => {
+    // Названия признаков длинные, а строк на бланке немного: ошибиться легко.
+    const longest = [...TRAIT_KEYS].sort((a, b) => TRAIT_NAMES[b].length - TRAIT_NAMES[a].length)
+    const three = longest.slice(0, 3)
+
+    for (const blank of [
+      cullBlank(three[0], [three[1], three[2]]),
+      graftBlank(three),
+      strainBlank(
+        { ...createState(0), traits: three, bred: ['AAAAAAAA'], offered: 'BBBBBBBB' },
+        'AAAAAAAA',
+      ),
+    ]) {
+      for (const line of blank.lines) check('бланк', line, LINE_LIMIT)
+      check('подсказка', blank.hint, HINT_LIMIT)
+      expect(blank.lines.length).toBeLessThanOrEqual(VISIBLE_LINES)
+    }
+  })
+
+  it('названия признаков есть у всех тридцати и не повторяются', () => {
+    const names = TRAIT_KEYS.map((k) => TRAIT_NAMES[k])
+    expect(names.filter(Boolean)).toHaveLength(30)
+    expect(new Set(names).size).toBe(30)
+    for (const n of names) check('TRAIT_NAMES', n, 16)
   })
 
   it('строка вернувшегося владельца помещается на экран запуска', () => {

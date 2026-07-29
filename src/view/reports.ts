@@ -6,9 +6,23 @@
 import type { GameState } from '../sim/state'
 import { dayOf, diagnose } from '../sim/derive'
 import { DAUGHTER_MIN_GROWTH, TEA_KEYS } from '../sim/balance'
-import { BUTTONS, INCIDENT, JOURNAL, POUR, REPORT, objectNo, dayNo } from '../content/strings'
+import {
+  BUTTONS,
+  CULL,
+  GRAFT,
+  INCIDENT,
+  JOURNAL,
+  POUR,
+  REPORT,
+  STRAIN,
+  TRAIT_NAMES,
+  objectNo,
+  dayNo,
+} from '../content/strings'
 import type { JournalEntry } from '../sim/journal'
 import type { IncidentKind } from '../sim/balance'
+import type { TraitKey } from '../sim/traits'
+import { prettyCode } from '../sim/strain'
 import type { Report } from './screenState'
 
 /** Порядок кнопок прибора — тот же, что у сортов и ответов в balance.ts. */
@@ -61,7 +75,16 @@ const clockOf = (at: number): string => {
 export function summary(s: GameState, scroll: number): Report {
   // Версия — в сводке, а не на видном месте: она нужна тестеру для отчёта
   // об ошибке, и экран аварийной службы для того и заведён.
-  const lines = [...diagnose(s), REPORT.version(__APP_VERSION__), '', REPORT.journal]
+  const lines = [
+    ...diagnose(s),
+    // Штамм и реестр — здесь, а не отдельным экраном: сводка и так про объект,
+    // а лишняя навигация на трёх кнопках дороже двух строк.
+    ...(s.traits.length ? [`ШТАММ: ${s.traits.map((k) => TRAIT_NAMES[k]).join(' · ')}`] : []),
+    STRAIN.registry(s.bred.length),
+    REPORT.version(__APP_VERSION__),
+    '',
+    REPORT.journal,
+  ]
   if (s.journal.length === 0) {
     lines.push(REPORT.empty)
   } else {
@@ -96,6 +119,50 @@ export function incidentBlank(kind: IncidentKind): Report {
   const lines: string[] = [INCIDENT.intro, ...card.lines, '']
   card.answers.forEach((label, i) => lines.push(`${BUTTON_ORDER[i]} · ${label}`))
   return { title: INCIDENT.title, lines, scroll: 0, hint: INCIDENT.hint }
+}
+
+/**
+ * Бланк выбраковки. Мест три, признак четвёртый — прибор требует решения.
+ * Кандидатов может быть и шесть (скрещивание с чужой закваской), тогда бланк
+ * проходится несколько раз: показываем первую тройку.
+ */
+export function cullBlank(gained: TraitKey, holding: TraitKey[]): Report {
+  const lines: string[] = [CULL.full, CULL.gained(TRAIT_NAMES[gained]), '']
+  holding.slice(0, 2).forEach((key, i) => {
+    lines.push(`${BUTTON_ORDER[i]} · ${CULL.drop(TRAIT_NAMES[key])}`)
+  })
+  lines.push(`${BUTTON_ORDER[2]} · ${CULL.keep}`)
+  return { title: CULL.title, lines, scroll: 0, hint: CULL.hint }
+}
+
+/**
+ * Бланк пересадки. Показывает, что есть у чужого штамма, и даёт взять один
+ * признак. Третья кнопка отказывается: чужое берут по желанию, а не по долгу.
+ */
+export function graftBlank(gift: TraitKey[]): Report {
+  const lines: string[] = [GRAFT.intro, GRAFT.prompt, '']
+  gift.slice(0, 2).forEach((key, i) => {
+    lines.push(`${BUTTON_ORDER[i]} · ${GRAFT.take(TRAIT_NAMES[key])}`)
+  })
+  // Третий признак предлагается, только если места на бланке хватило.
+  lines.push(`${BUTTON_ORDER[2]} · ${gift.length > 2 ? GRAFT.take(TRAIT_NAMES[gift[2]]) : GRAFT.refuse}`)
+  return { title: GRAFT.title, lines, scroll: 0, hint: GRAFT.hint }
+}
+
+/**
+ * Бланк штамма: удостоверение объекта и обмен закваской. Код показан всегда,
+ * даже когда буфер недоступен, — восемь знаков без похожих букв затем и
+ * выбраны, чтобы их можно было переписать с чужого экрана.
+ */
+export function strainBlank(s: GameState, code: string): Report {
+  const lines: string[] = [prettyCode(code), '']
+  if (s.traits.length === 0) lines.push(STRAIN.none)
+  else for (const key of s.traits) lines.push(`· ${TRAIT_NAMES[key]}`)
+
+  lines.push('', STRAIN.registry(s.bred.length))
+  if (s.offered) lines.push(STRAIN.offered(prettyCode(s.offered)), STRAIN.offeredHint)
+
+  return { title: STRAIN.title, lines, scroll: 0, hint: STRAIN.hint }
 }
 
 /** Извещение о гибели. */

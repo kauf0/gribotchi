@@ -126,8 +126,10 @@ describe('бланк подачи', () => {
 })
 
 describe('сводка', () => {
-  it('кнопки становятся навигацией', () => {
-    expect(kinds(ctx({ ui: 'report' }))).toEqual(['scroll', 'scroll', 'close-report'])
+  it('кнопки становятся навигацией, а СОС ведёт дальше — на штамм', () => {
+    // Отдельного входа в удостоверение взять неоткуда: кнопок три, и СОС
+    // проходит цикл игра → сводка → штамм → игра.
+    expect(kinds(ctx({ ui: 'report' }))).toEqual(['scroll', 'scroll', 'open-strain'])
   })
 
   it('ЧАЙ листает вверх, МЫТЬ вниз', () => {
@@ -181,6 +183,42 @@ describe('бланк происшествия', () => {
   })
 })
 
+describe('бланк штамма', () => {
+  it('ЧАЙ копирует код, МЫТЬ вставляет чужой, СОС выходит', () => {
+    expect(kinds(ctx({ ui: 'strain' }))).toEqual(['copy-strain', 'paste-strain', 'close-strain'])
+  })
+
+  it('со штамма нельзя случайно накормить или разлить', () => {
+    const c = ctx({ ui: 'strain', ready: true })
+    for (const id of BUTTONS) {
+      expect(['feed', 'open-pour', 'clean', 'bottle']).not.toContain(intentFor(c, id).kind)
+    }
+  })
+})
+
+describe('выбраковка', () => {
+  it('две кнопки исключают признак, третья отказывается от нового', () => {
+    const c = ctx({ ui: 'cull' })
+    expect(BUTTONS.map((id) => intentFor(c, id))).toEqual([
+      { kind: 'cull', index: 0 },
+      { kind: 'cull', index: 1 },
+      { kind: 'cull', index: 2 },
+    ])
+  })
+
+  it('промахнуться нельзя: любой ответ разрешает выбраковку', () => {
+    const c = ctx({ ui: 'cull' })
+    for (const id of BUTTONS) expect(intentFor(c, id).kind).toBe('cull')
+  })
+
+  it('выбраковка важнее происшествия и сводки, но не смерти', () => {
+    // Оставлять четвёртый признак подвешенным нельзя, а мёртвому он не нужен.
+    expect(kinds(ctx({ ui: 'cull', ready: true }))).toEqual(['cull', 'cull', 'cull'])
+    expect(kinds(ctx({ ui: 'cull', alive: false }))).toEqual(['ignore', 'ignore', 'next-generation'])
+    expect(kinds(ctx({ ui: 'cull', washing: true }))).toEqual(['ignore', 'ignore', 'ignore'])
+  })
+})
+
 describe('смерть', () => {
   it('пока идёт выдержка, нажатия не принимаются', () => {
     // Сначала игроку дают разглядеть банку с крестиками вместо глаз.
@@ -211,7 +249,7 @@ describe('смерть', () => {
 describe('полнота', () => {
   it('ни одно сочетание состояний не роняет функцию', () => {
     const phases = ['start', 'boot', 'game'] as const
-    const uis = ['game', 'report', 'pour', 'incident'] as const
+    const uis = ['game', 'report', 'pour', 'incident', 'cull', 'strain'] as const
     const flags = [false, true]
     let combos = 0
 
@@ -239,7 +277,7 @@ describe('полнота', () => {
         }
       }
     }
-    expect(combos).toBe(3 * 4 * 2 * 2 * 2 * 2 * 2 * 2 * 3)
+    expect(combos).toBe(3 * 6 * 2 * 2 * 2 * 2 * 2 * 2 * 3)
   })
 
   it('действия над объектом возможны только в живой игре', () => {

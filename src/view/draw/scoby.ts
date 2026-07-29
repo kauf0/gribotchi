@@ -11,6 +11,8 @@
 
 import { Lcd, rnd } from '../lcd'
 import type { Mood } from '../screenState'
+import { silhouetteOf, type Silhouette } from './silhouette'
+import type { TraitKey } from '../../sim/traits'
 
 export type ScobyOpts = {
   cx: number
@@ -21,14 +23,26 @@ export type ScobyOpts = {
   t: number
   /** Дно банки в клетках: ниже него нити не свисают. */
   floor?: number
+  /**
+   * Наибольшая полуширина в клетках: широкий штамм упирается в стенки банки,
+   * а не вылезает наружу. Без этого БУЙНЫЙ с ЖАДНЫМ рисовались поверх стекла.
+   */
+  maxHalfWidth?: number
+  /** Признаки штамма — от них зависит силуэт. */
+  traits?: TraitKey[]
 }
 
 export function drawScoby(lcd: Lcd, o: ScobyOpts): void {
   const { c1, c2, c3 } = lcd.pal
   const { cx, growth, mood, mold, t } = o
 
-  const hw = Math.round(3 + growth * 7) // полуширина диска в клетках
-  const th = Math.round(2 + growth * 4) // толщина
+  // Силуэт собирается из признаков: три вклада складываются, и штаммы видно
+  // на глаз, а не по подписи. Без признаков всё как было.
+  const form: Silhouette = silhouetteOf(o.traits ?? [])
+
+  const room = o.maxHalfWidth ?? Infinity
+  const hw = Math.max(2, Math.min(room, Math.round((3 + growth * 7) * form.width))) // полуширина
+  const th = Math.max(1, Math.round((2 + growth * 4) * form.thick)) // толщина
   // Плавает по синусоиде; расстроенный гриб плавает вяло.
   const bob = Math.round(Math.sin(t * 1.6) * (mood === 'sad' || mood === 'away' ? 0.2 : 0.6))
   const y0 = o.top + bob
@@ -40,17 +54,26 @@ export function drawScoby(lcd: Lcd, o: ScobyOpts): void {
     lcd.r(cx - w / 2, y0 + i, w, 1, i === 0 ? c1 : c2)
   }
 
+  // Кольца на диске — приметы целебной и долгой линии.
+  for (let i = 1; i <= form.rings; i++) {
+    const inset = i * 2
+    if (hw - inset < 1) break
+    lcd.r(cx - hw + inset, y0 + Math.min(i, th - 1), (hw - inset) * 2, 1, c1, 0.5)
+  }
+
   // Нити, свисающие в чай. Длина растёт вместе с грибом, но упирается в дно:
   // когда гриб при промывке оседает, нити иначе торчали бы наружу сквозь банку.
   const strandRoom = o.floor === undefined ? Infinity : o.floor - (y0 + th)
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < form.strands; i++) {
     const sx = cx - hw + 1 + Math.round(rnd(i) * (hw * 2 - 2))
-    const len = Math.min(1 + Math.round(rnd(i + 9) * 3 * growth), strandRoom)
+    const len = Math.min(1 + Math.round(rnd(i + 9) * 3 * growth * form.strandLen), strandRoom)
     if (len > 0) lcd.r(sx, y0 + th, 1, len, c2, 0.85)
   }
 
-  // Плесень — стыдная часть. Она же индикатор здоровья: mold >= 1 означает смерть.
-  const specks = Math.round(mold * 10)
+  // Плесень — стыдная часть. Она же индикатор здоровья: mold >= 1 означает
+  // смерть. Рубцы жилистого штамма подмешиваются к ней же: следы прошлой беды
+  // выглядят так же, как беда нынешняя, и это честно.
+  const specks = Math.round(mold * 10) + form.scars
   for (let i = 0; i < specks; i++) {
     const mx = cx - hw + 1 + Math.round(rnd(i * 3.3) * (hw * 2 - 2))
     const my = y0 + Math.round(rnd(i * 7.7) * (th - 1))

@@ -1,0 +1,198 @@
+/**
+ * Витрина каталога. Цвета взяты из тех же токенов, что и корпус прибора,
+ * чтобы картинка не разошлась с игрой.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0b0c07;
+}
+
+#promo {
+  /* Кегль пропорционален ширине кадра: в обложку 630 та же вёрстка иначе
+     не влезает и рвёт заголовок на две строки. */
+  --k: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #16170f;
+  color: #d9c9a3;
+  font-family: 'PT Sans Narrow', sans-serif;
+  padding: 26px 30px 20px;
+}
+
+/* Клеёнка со стола — та же, что в комнате игры. */
+.cloth {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, #5b3a2e 0 46px, #6b4636 46px 92px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0 46px, transparent 46px 92px);
+  background-blend-mode: multiply;
+  opacity: 0.6;
+}
+
+#promo > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Затемнение к краям: кадр собирается к центру. */
+#promo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(6, 7, 4, 0.8) 100%);
+}
+
+header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  border-bottom: 2px solid rgba(217, 201, 163, 0.25);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: calc(52px * var(--k));
+  letter-spacing: 6px;
+  line-height: 0.9;
+  color: #e8dcbb;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.jp {
+  font-family: 'DotGothic16', monospace;
+  font-size: calc(20px * var(--k));
+  white-space: nowrap;
+  color: #a8977160;
+  letter-spacing: 3px;
+}
+
+.meta {
+  text-align: right;
+  line-height: 1.25;
+}
+
+.meta b {
+  display: block;
+  white-space: nowrap;
+  font-size: calc(22px * var(--k));
+  letter-spacing: 5px;
+  font-weight: 400;
+}
+
+.meta span {
+  white-space: nowrap;
+  font-size: calc(14px * var(--k));
+  letter-spacing: 2px;
+  color: #a89771;
+}
+
+/* Не растягиваем по остатку: тогда scrollHeight сетки врёт, и подгонка
+   высоты образца не может понять, что содержимое не влезло. */
+.grid {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  gap: 14px;
+  align-content: center;
+}
+
+.card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * Вырезка по банке: в кадре нужен образец, а не весь экран прибора.
+ *
+ * Буфер ЖК — 300×240, банка занимает 90…210 по x. По вертикали берём не всю
+ * банку, а 66…174: ниже идёт пустой чай, и в каталоге он только съедал бы
+ * место. Проценты — доли ОТ СВОЕЙ стороны: ширина 300/120, высота 240/108.
+ * Первая версия считала верхний сдвиг от ширины, и от гриба оставалась
+ * середина без банки.
+ */
+.shot {
+  position: relative;
+  height: var(--shot);
+  aspect-ratio: 120 / 108;
+  overflow: hidden;
+  border: 2px solid #3b3627;
+  border-radius: 3px;
+  background: #c8a15a;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.shot canvas {
+  position: absolute;
+  width: 250%;
+  height: 222.222%;
+  left: -75%;
+  top: -61.111%;
+  image-rendering: pixelated;
+}
+
+/* Признаки — единственная подпись, поэтому она и несёт всю нагрузку:
+   каждый на своей строке, чтобы читались как список свойств образца. */
+figcaption {
+  text-align: center;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+figcaption span {
+  font-size: calc(15px * var(--k));
+  letter-spacing: calc(2px * var(--k));
+  color: #d9c197;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+figcaption span:first-child {
+  color: #e0b060;
+}
+
+footer {
+  margin-top: auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 2px solid rgba(217, 201, 163, 0.25);
+  padding-top: 10px;
+  margin-top: 14px;
+}
+
+.big {
+  white-space: nowrap;
+  font-size: calc(20px * var(--k));
+  letter-spacing: 4px;
+}
+
+.tag {
+  white-space: nowrap;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 3px;
+  color: #c8873a;
+}

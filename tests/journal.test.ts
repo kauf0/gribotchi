@@ -12,8 +12,9 @@ import { createState, type GameState } from '../src/sim/state'
 import {
   isMilestone,
   trim,
-  remember,
-  rememberAll,
+  record,
+  recordAll,
+  counted,
   MILESTONE_CAP,
   OBSERVATION_CAP,
   type JournalEntry,
@@ -209,10 +210,12 @@ describe('предел журнала', () => {
   it('наплыв наблюдений не вытесняет ни одной вехи', () => {
     // Ради этого разделения предел и заведён: партии и гибели — история цикла,
     // и потерять их из-за десятка ночных подач было бы обидно.
-    let journal = Array.from({ length: 5 }, (_, i) => make('batch', i))
-    for (let i = 0; i < 100; i++) journal = remember(journal, make('night-pour', 100 + i))
-    expect(journal.filter(isMilestone)).toHaveLength(5)
-    expect(journal.filter((e) => !isMilestone(e))).toHaveLength(OBSERVATION_CAP)
+    let s = { ...base(), journal: Array.from({ length: 5 }, (_, i) => make('batch', i)) }
+    for (let i = 0; i < 100; i++) s = record(s, make('night-pour', 100 + i))
+    expect(s.journal.filter(isMilestone)).toHaveLength(5)
+    expect(s.journal.filter((e) => !isMilestone(e))).toHaveLength(OBSERVATION_CAP)
+    // А счётчик продолжает считать вытесненное — ради этого он и заведён.
+    expect(counted(s.tally, 'night-pour')).toBe(100)
   })
 
   it('запись без вида считается вехой — так выглядят старые сохранения', () => {
@@ -308,10 +311,8 @@ describe('журнал переживает обновление', () => {
 
 describe('журнал наполняется сам', () => {
   /** Тот же шаг, что делает main.ts на каждом кадре: сверить и дописать. */
-  const step = (prev: GameState, next: GameState, occ: { now: number; hour: number }): GameState => ({
-    ...next,
-    journal: rememberAll(next.journal, observe(prev, next, occ)),
-  })
+  const step = (prev: GameState, next: GameState, occ: { now: number; hour: number }): GameState =>
+    recordAll(next, observe(prev, next, occ))
 
   it('за жизнь поколения набирается история и про объект, и про владельца', () => {
     // Проверка того самого обещания: журнал должен говорить о владельце,

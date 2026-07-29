@@ -5,7 +5,7 @@ import { Lcd } from './view/lcd'
 import { render } from './view/render'
 import { DEFAULT_SKIN, type SkinKey } from './content/tokens'
 import type { ScreenState, StartCard } from './view/screenState'
-import { BRAND, BUBBLE, MSG, START, wereAway } from './content/strings'
+import { BRAND, BUBBLE, CULL, GRAFT, MSG, START, STRAIN, TRAIT_NAMES, wereAway } from './content/strings'
 import { mountDebugPanel, type DebugControls } from './debug/panel'
 import { readUrlSeed } from './debug/params'
 
@@ -17,14 +17,26 @@ import { canBottle, canFeed, dayOf, moodOf } from './sim/derive'
 import type { GameState } from './sim/state'
 import { Fx } from './view/fx'
 import { project } from './view/project'
-import { summary, obituary, pourBlank, incidentBlank, maxScroll } from './view/reports'
+import {
+  summary,
+  obituary,
+  pourBlank,
+  incidentBlank,
+  cullBlank,
+  graftBlank,
+  strainBlank,
+  maxScroll,
+} from './view/reports'
 import { VISIBLE_LINES } from './view/screens/report'
 import { Audio } from './audio'
 import { intentFor, type Phase, type UiMode } from './ui/controller'
 import { reactionTo, type Signals } from './ui/reactions'
 import { observe, noteReturn } from './sim/observations'
 import { incidentFor, answer, type IncidentKind } from './sim/incidents'
-import { rememberAll, type JournalKind } from './sim/journal'
+import { earnedTraits, TRAIT_SLOTS, type TraitKey } from './sim/traits'
+import { encodeStrain, decodeStrain } from './sim/strain'
+import { copyText, readText, onPaste } from './ui/clipboard'
+import { recordAll, type JournalKind } from './sim/journal'
 import { leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
 import { installOffer, DISMISSED_KEY, type InstallOffer } from './ui/install'
 import { demoFrameAt } from './demo/timeline'
@@ -118,6 +130,87 @@ let prevJournal: GameState | null = null
  */
 let pendingIncident: IncidentKind | null = null
 
+/** Признак, который закрепился, но мест не нашлось: ждёт выбраковки. */
+let pendingTrait: TraitKey | null = null
+
+/**
+ * Признаки чужого штамма, из которых владелец выбирает один при смене
+ * поколения. Выбор здесь, а не в симуляции: у чужого гриба обычно есть ровно
+ * тот признак, которого своим не заработать, и решать, брать ли его,
+ * должен человек.
+ */
+let pendingGraft: TraitKey[] | null = null
+
+/** Поколение на прошлом кадре — по нему видно смену. */
+let lastGeneration = 0
+
+/** Удостоверение объекта — восемь знаков, которые можно отдать другому. */
+const strainCode = (s: GameState): string =>
+  encodeStrain({ traits: s.traits, generation: s.generation, crossings: s.crossings })
+
+/**
+ * Приём чужой закваски. Кладём на хранение, ничего не затирая: скрестится
+ * при следующей смене поколения, и решение остаётся за владельцем.
+ */
+function acceptStarter(text: string | null, now: number): void {
+  if (!text) return fx.say(STRAIN.pasteFailed, now)
+  const strain = decodeStrain(text)
+  if (!strain) return fx.say(STRAIN.badCode, now)
+  // Свой же код принимать незачем: скрещивать не с кем.
+  if (decodeStrain(strainCode(state))?.traits.join() === strain.traits.join()) {
+    return fx.say(STRAIN.ownCode, now)
+  }
+  state = { ...state, offered: text.toUpperCase().replace(/[\s-]/g, '') }
+  fx.say(STRAIN.accepted, now)
+  persist(now, true)
+}
+
+/**
+ * Что закрепилось само. Проверяется на каждом кадре рядом с наблюдениями:
+ * признак даётся В МОМЕНТ выполнения условия, а не при розливе, — так отдача
+ * приходит по ходу игры.
+ *
+ * Мест три. Свободно — берём молча; занято — прибор требует выбраковки, и до
+ * ответа игра ждёт.
+ */
+/**
+ * Смена поколения с закваской на хранении — время пересадки. Показываем, что
+ * есть у чужого штамма, и даём выбрать.
+ */
+function watchGraft(): void {
+  const changed = lastGeneration !== 0 && state.generation !== lastGeneration
+  lastGeneration = state.generation
+  if (!changed || !state.offered || pendingGraft) return
+
+  const foreign = decodeStrain(state.offered)
+  // Берём только то, чего у своего нет: своё и так на месте.
+  const gift = foreign?.traits.filter((k) => !state.traits.includes(k)) ?? []
+  if (gift.length === 0) {
+    state = { ...state, offered: null }
+    return
+  }
+  pendingGraft = gift.slice(0, 3)
+  ui = 'graft'
+}
+
+function watchTraits(now: number): void {
+  if (!state.alive || ui !== 'game' || pendingTrait || pendingIncident || pendingGraft) return
+  const gained = earnedTraits(state)[0]
+  if (!gained) return
+
+  if (state.traits.length < TRAIT_SLOTS) {
+    state = { ...state, traits: [...state.traits, gained] }
+    fx.say(CULL.fixed(TRAIT_NAMES[gained]), now)
+    persist(now, true)
+    return
+  }
+  pendingTrait = gained
+  ui = 'cull'
+}
+
+/** Закваска ссылкой: ?shtamm=7K3M9QXA. Работает и на itch, и на своей странице. */
+const sharedStrain = new URLSearchParams(location.search).get('shtamm')
+
 const restored = load(clock.now())
 let state: GameState = restored.state
 // Отлучку записываем сразу: она уже случилась, и от того, включит ли игрок
@@ -126,6 +219,7 @@ if (!restored.fresh) {
   state = noteReturn(state, restored.awayMs, occasion(clock.now()))
   pendingIncident = incidentFor(state, restored.awayMs, clock.now())
 }
+if (sharedStrain) acceptStarter(sharedStrain, clock.now())
 
 /** Обстоятельства для наблюдений: симуляция о часовых поясах не знает. */
 function occasion(now: number) {
@@ -234,6 +328,10 @@ if (import.meta.env.DEV) {
     }
   }
   if (seed.open === 'report') ui = 'report'
+  if (seed.traits) {
+    state.traits = seed.traits.filter((k) => k in TRAIT_NAMES) as TraitKey[]
+  }
+  if (seed.open === 'strain') ui = 'strain'
   if (seed.open === 'incident') {
     // Какое именно — решает обстановка, её задают тем же ?sim.mold и прочими.
     pendingIncident = incidentFor({ ...state, lastIncidentAt: 0 }, ABSENCE_WORTH_NOTING_MS + 1, clock.now())
@@ -440,10 +538,74 @@ function handlePress(id: ButtonId): void {
       scroll = 0
       return
 
-    case 'close-report':
+    case 'open-strain':
+      audio.click()
+      ui = 'strain'
+      return
+
+    case 'close-strain':
       audio.click()
       ui = 'game'
       return
+
+    case 'copy-strain':
+      audio.click()
+      void copyText(strainCode(state)).then((ok) => fx.say(ok ? STRAIN.copied : STRAIN.copyFailed, clock.now()))
+      return
+
+    case 'paste-strain':
+      audio.click()
+      void readText().then((text) => acceptStarter(text, clock.now()))
+      return
+
+    case 'graft': {
+      audio.click()
+      const gift = pendingGraft
+      pendingGraft = null
+      ui = 'game'
+      state = { ...state, offered: null }
+      const taken = gift?.[intent.index]
+      if (!taken) {
+        fx.say(GRAFT.refused, now)
+        persist(now, true)
+        return
+      }
+      state = { ...state, crossings: state.crossings + 1 }
+      // Дальше — обычный путь признака: есть место, берём; нет — выбраковка.
+      if (state.traits.length < TRAIT_SLOTS) {
+        state = { ...state, traits: [...state.traits, taken] }
+        fx.say(CULL.fixed(TRAIT_NAMES[taken]), now)
+      } else {
+        pendingTrait = taken
+        ui = 'cull'
+      }
+      persist(now, true)
+      return
+    }
+
+    case 'cull': {
+      audio.click()
+      const gained = pendingTrait
+      pendingTrait = null
+      ui = 'game'
+      if (!gained) return
+      // Третья кнопка отказывается от нового признака, первые две меняют его
+      // на один из занятых мест.
+      if (intent.index === 2) {
+        // Отказ надо запомнить: условие-то по-прежнему выполнено, и без
+        // отметки прибор потребовал бы того же на следующем кадре.
+        state = { ...state, declined: [...state.declined, gained] }
+        fx.say(CULL.refused, now)
+        persist(now, true)
+        return
+      }
+      const dropped = state.traits[intent.index]
+      if (!dropped) return
+      state = { ...state, traits: [...state.traits.filter((k) => k !== dropped), gained] }
+      fx.say(CULL.dropped(TRAIT_NAMES[dropped]), now)
+      persist(now, true)
+      return
+    }
 
     case 'scroll': {
       audio.click()
@@ -494,7 +656,7 @@ function watchJournal(now: number): void {
   const found = observe(prev, state, occasion(now))
   if (found.length === 0) return
 
-  state = { ...state, journal: rememberAll(state.journal, found) }
+  state = recordAll(state, found)
   prevJournal = state
   // Записанное сохраняем сразу: событие редкое, а потерять его при закрытой
   // вкладке обиднее, чем лишний раз записать в хранилище.
@@ -565,6 +727,9 @@ window.addEventListener('beforeinstallprompt', (event) => {
   installEvent = event as Event & { prompt: () => Promise<void> }
   refreshInstall()
 })
+// Настоящая вставка работает даже там, где читать буфер по кнопке нельзя.
+onPaste((text) => acceptStarter(text, clock.now()))
+
 window.addEventListener('appinstalled', () => {
   installEvent = null
   refreshInstall()
@@ -606,6 +771,15 @@ function buildScreen(t: number): ScreenState {
   }
   if (ui === 'report') {
     return { ...screen, mode: 'journal', report: summary(state, scroll) }
+  }
+  if (ui === 'graft' && pendingGraft) {
+    return { ...screen, mode: 'graft', report: graftBlank(pendingGraft) }
+  }
+  if (ui === 'cull' && pendingTrait) {
+    return { ...screen, mode: 'cull', report: cullBlank(pendingTrait, state.traits) }
+  }
+  if (ui === 'strain') {
+    return { ...screen, mode: 'strain', report: strainBlank(state, strainCode(state)) }
   }
   if (ui === 'incident' && pendingIncident) {
     return { ...screen, mode: 'incident', report: incidentBlank(pendingIncident) }
@@ -662,6 +836,8 @@ function frame(ms: number): void {
 
   watchSignals(now)
   watchJournal(now)
+  watchGraft()
+  watchTraits(now)
   persist(now)
   audio.setThemeAllowed(phase === 'game' || attractSince !== null)
 

@@ -36,7 +36,7 @@ export type UrlSeed = {
   patch: Partial<ScreenState>
   sim?: SimSeed
   /** Какой экран открыть поверх игры. */
-  open?: 'report' | 'pour' | 'incident'
+  open?: 'report' | 'pour' | 'incident' | 'strain'
   /** Запустить ролик сразу, с указанной секунды: ?attract=20. */
   attract?: number
   /**
@@ -45,6 +45,11 @@ export type UrlSeed = {
    * на надпись и проверить её расположение надо.
    */
   install?: 'prompt' | 'ios-hint'
+  /**
+   * Признаки штамма для снимков: ?traits=wiry,healing,devoted. Дожидаться,
+   * пока они закрепятся сами, никакой съёмки не хватит.
+   */
+  traits?: string[]
   /**
    * Через сколько секунд простоя прибор сам показывает ролик: ?idle=3.
    * В игре это минута, и ждать её в каждом прогоне теста никто не станет.
@@ -100,9 +105,13 @@ export function readUrlSeed(search: string): UrlSeed {
 
   const openRaw = q.get('open')
   const open =
-    openRaw === 'report' || openRaw === 'pour' || openRaw === 'incident' ? openRaw : undefined
+    openRaw === 'report' || openRaw === 'pour' || openRaw === 'incident' || openRaw === 'strain'
+      ? openRaw
+      : undefined
   const attract = q.has('attract') ? (num(q, 'attract') ?? 0) : undefined
   const idle = num(q, 'idle')
+  const traitsRaw = q.get('traits')
+  const traits = traitsRaw ? traitsRaw.split(',').filter(Boolean) : undefined
   const installRaw = q.get('install')
   const install =
     installRaw === 'prompt' ? ('prompt' as const) : installRaw === 'ios' ? ('ios-hint' as const) : undefined
@@ -114,6 +123,7 @@ export function readUrlSeed(search: string): UrlSeed {
     patch,
     sim: Object.keys(sim).length > 0 ? sim : undefined,
     open,
+    traits,
     install,
     attract,
     idleBeforeAttract: idle !== undefined && idle >= 0 ? idle * 1000 : undefined,

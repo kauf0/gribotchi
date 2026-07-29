@@ -6,6 +6,7 @@
   "description": "ГРИБОЧИ / グリボッチ — виртуальный чайный гриб в винтажном корпусе",
   "scripts": {
     "dev": "vite",
+    "lab": "vite --open /lab.html",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",

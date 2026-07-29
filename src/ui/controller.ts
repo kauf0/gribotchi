@@ -14,7 +14,7 @@ import type { ButtonId } from '../view/shell'
 import { TEA_KEYS, type TeaKey } from '../sim/balance'
 
 export type Phase = 'start' | 'boot' | 'game'
-export type UiMode = 'game' | 'report' | 'pour' | 'incident'
+export type UiMode = 'game' | 'report' | 'pour' | 'incident' | 'cull' | 'graft' | 'strain'
 
 export type Intent =
   /** Ничего не происходит; reason — только для отладки и тестов. */
@@ -29,7 +29,15 @@ export type Intent =
   | { kind: 'clean' }
   | { kind: 'bottle' }
   | { kind: 'open-report' }
-  | { kind: 'close-report' }
+  /** Со сводки СОС ведёт дальше — на штамм, а не наружу. */
+  | { kind: 'open-strain' }
+  | { kind: 'close-strain' }
+  /** Выбраковка: 0 и 1 исключают признак, 2 отказывается от нового. */
+  | { kind: 'cull'; index: 0 | 1 | 2 }
+  /** Пересадка: какой признак взять у чужой закваски. */
+  | { kind: 'graft'; index: 0 | 1 | 2 }
+  | { kind: 'copy-strain' }
+  | { kind: 'paste-strain' }
   | { kind: 'scroll'; delta: -1 | 1 }
   | { kind: 'next-generation' }
 
@@ -85,14 +93,30 @@ export function intentFor(ctx: ControlContext, id: ButtonId): Intent {
   // Бланк подачи открыт: кнопки прибора — это сорта, по порядку.
   if (ctx.ui === 'pour') return { kind: 'pour', tea: TEA_KEYS[BUTTON_INDEX[id]] as TeaKey }
 
+  // Выбраковка требует решения раньше всего прочего: мест три, а признаков
+  // стало четыре, и оставлять это подвешенным нельзя.
+  if (ctx.ui === 'cull') return { kind: 'cull', index: BUTTON_INDEX[id] }
+
+  // Пересадка: чужая закваска ждёт решения при смене поколения.
+  if (ctx.ui === 'graft') return { kind: 'graft', index: BUTTON_INDEX[id] }
+
   // Происшествие ждёт ответа. Отмены нет и таймера нет: любой из трёх ответов
   // годится, включая «переложить на службу», и мимо не промахнёшься.
   if (ctx.ui === 'incident') return { kind: 'answer', index: BUTTON_INDEX[id] }
 
+  // Бланк штамма: копия кода, вставка чужого, выход.
+  if (ctx.ui === 'strain') {
+    if (id === 'A') return { kind: 'copy-strain' }
+    if (id === 'B') return { kind: 'paste-strain' }
+    return { kind: 'close-strain' }
+  }
+
   if (ctx.ui === 'report') {
     if (id === 'A') return { kind: 'scroll', delta: -1 }
     if (id === 'B') return { kind: 'scroll', delta: 1 }
-    return { kind: 'close-report' }
+    // СОС уводит не наружу, а на штамм: у прибора три кнопки, и отдельного
+    // входа в удостоверение взять неоткуда. Выход — следующим нажатием СОС.
+    return { kind: 'open-strain' }
   }
 
   if (id === 'A') return ctx.canFeed ? { kind: 'open-pour' } : { kind: 'feed' }

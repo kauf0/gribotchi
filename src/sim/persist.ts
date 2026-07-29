@@ -8,7 +8,9 @@
 
 import { advance } from './tick'
 import { createState, emptyPoured, SAVE_VERSION, type GameState } from './state'
-import { trim, type JournalEntry } from './journal'
+import { trim, type JournalEntry, type Tally, type TallyKey } from './journal'
+import { TRAIT_KEYS, TRAIT_SLOTS, type TraitKey } from './traits'
+import { decodeStrain } from './strain'
 import { CLEAN_STRESS_MS, TEA_KEYS, type TeaKey } from './balance'
 
 const KEY = 'gribochi.save.v1'
@@ -142,6 +144,35 @@ function migrate(parsed: unknown, now: number): GameState | null {
   merged.journal = trim(merged.journal)
 
   /**
+   * Штамм: счётчик, худшая плесень, признаки, реестр и полученная закваска.
+   *
+   * История до обновления неизвестна, и выдумывать её нельзя — счётчик
+   * начинается с нуля, признаки начнут закрепляться с этого момента. А вот
+   * худшую плесень мы кое-что знаем: она заведомо не меньше нынешней, поэтому
+   * берём текущую, а не ноль. Так гриб, которого только что вытащили из беды,
+   * не потеряет право на ЖИЛИСТОГО.
+   */
+  merged.tally = plainCounts(raw.tally)
+  merged.maxMold =
+    typeof raw.maxMold === 'number' && Number.isFinite(raw.maxMold) && raw.maxMold >= 0
+      ? Math.min(1, Math.max(raw.maxMold, merged.mold))
+      : merged.mold
+  merged.traits = Array.isArray(raw.traits)
+    ? (raw.traits.filter((k) => TRAIT_KEYS.includes(k as TraitKey)) as TraitKey[]).slice(0, TRAIT_SLOTS)
+    : []
+  merged.declined = Array.isArray(raw.declined)
+    ? (raw.declined.filter((k) => TRAIT_KEYS.includes(k as TraitKey)) as TraitKey[])
+    : []
+  merged.crossings = whole(raw.crossings)
+  // Коды с негодной контрольной суммой отбрасываем: чужой формат в реестре
+  // хуже пустого реестра.
+  merged.bred = Array.isArray(raw.bred)
+    ? [...new Set(raw.bred.filter((c) => typeof c === 'string' && decodeStrain(c) !== null))]
+    : []
+  merged.offered =
+    typeof raw.offered === 'string' && decodeStrain(raw.offered) !== null ? raw.offered : null
+
+  /**
    * Метки времени из будущего оставлять нельзя. Их пишет отладочный ускоритель
    * (покормили при ×600 — и lastFedAt уехал на часы вперёд) и переведённые
    * системные часы. После перезагрузки часы возвращаются к настоящим, и игра
@@ -168,6 +199,21 @@ function migrate(parsed: unknown, now: number): GameState | null {
   )
 
   return merged
+}
+
+/** Целое неотрицательное или ноль — счётчики отрицательными не бывают. */
+const whole = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0
+
+/** Счётчик пересобирается поимённо: чужие ключи и мусор в подсчёт не пускаем. */
+function plainCounts(raw: unknown): Tally {
+  if (typeof raw !== 'object' || raw === null) return {}
+  const out: Tally = {}
+  for (const [key, value] of Object.entries(raw)) {
+    const n = whole(value)
+    if (n > 0) out[key as TallyKey] = n
+  }
+  return out
 }
 
 function safeStorage(): Storage | null {

@@ -14,6 +14,7 @@
  */
 
 import type { IncidentKind, TeaKey } from './balance'
+import type { GameState } from './state'
 
 /** Качество партии. Слово подбирает вид, симуляция знает только ступень. */
 export type Grade = 'top' | 'first' | 'second'
@@ -75,13 +76,6 @@ export const isMilestone = (e: JournalEntry): boolean =>
 export const MILESTONE_CAP = 30
 export const OBSERVATION_CAP = 20
 
-/** Добавляет запись и подрезает журнал. */
-export const remember = (journal: JournalEntry[], entry: JournalEntry): JournalEntry[] =>
-  trim([...journal, entry])
-
-export const rememberAll = (journal: JournalEntry[], entries: JournalEntry[]): JournalEntry[] =>
-  entries.length === 0 ? journal : trim([...journal, ...entries])
-
 /**
  * Подрезка: вехи и наблюдения считаются отдельно, вытесняются старые.
  * Порядок записей при этом сохраняется — журнал остаётся хронологическим.
@@ -96,6 +90,50 @@ export function trim(journal: JournalEntry[]): JournalEntry[] {
     ...observations.slice(-OBSERVATION_CAP),
   ])
   return journal.filter((e) => keep.has(e))
+}
+
+/**
+ * Несжимаемый счётчик событий за жизнь поколения.
+ *
+ * Журнал ограничен и вытесняется — по нему нельзя сосчитать, сколько раз
+ * перекормили, если переливов было больше двадцати. Признаки же (sim/traits.ts)
+ * считают именно повторы, поэтому рядом с журналом живёт счётчик, который
+ * не подрезается никогда.
+ *
+ * Ключевой приём: он обновляется ТАМ ЖЕ, где пишется запись, и больше нигде, —
+ * значит разойтись с журналом не может. Сюда же попали два события, записи
+ * не заслуживающие: промывка (её слишком много) и то, какой кнопкой ответили
+ * на происшествие.
+ */
+export type TallyKey = JournalKind | 'clean' | 'answer-0' | 'answer-1' | 'answer-2'
+export type Tally = Partial<Record<TallyKey, number>>
+
+export const counted = (t: Tally, key: TallyKey): number => t[key] ?? 0
+
+/** Прибавляет единицу к счётчику, не трогая остальное. */
+export const bump = (t: Tally, key: TallyKey, by = 1): Tally => ({
+  ...t,
+  [key]: counted(t, key) + by,
+})
+
+/**
+ * Записать событие: журнал плюс счётчик, одним движением. Работает над всем
+ * состоянием, а не над массивом, ровно затем, чтобы забыть про счётчик было
+ * невозможно.
+ */
+export function record(s: GameState, entry: JournalEntry): GameState {
+  return {
+    ...s,
+    journal: trim([...s.journal, entry]),
+    tally: entry.kind ? bump(s.tally, entry.kind) : s.tally,
+  }
+}
+
+export function recordAll(s: GameState, entries: JournalEntry[]): GameState {
+  if (entries.length === 0) return s
+  let next = s
+  for (const entry of entries) next = record(next, entry)
+  return next
 }
 
 /** Последняя запись такого вида у этого поколения. */

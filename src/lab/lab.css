@@ -1,0 +1,265 @@
+/* Лаборатория: инструмент, а не витрина. Сухо, плотно, без анимаций. */
+
+:root {
+  color-scheme: dark;
+  --ink: #d9c9a3;
+  --dim: #8a7f66;
+  --line: #2e2f26;
+  --bg: #16170f;
+  --panel: #1e1f16;
+  --hot: #c8873a;
+  --bad: #8e3a2a;
+  --good: #6b8e3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+#lab {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  #lab {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.panel > h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 1250px) {
+  .cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+canvas.lcd {
+  display: block;
+  width: 300px;
+  height: 240px;
+  image-rendering: pixelated;
+  border: 2px solid #3b3627;
+  border-radius: 3px;
+  background: #c8a15a;
+}
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: #262719;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--hot);
+}
+
+button.on {
+  background: var(--hot);
+  color: #16170f;
+  border-color: var(--hot);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+input[type='text'] {
+  font: inherit;
+  color: var(--ink);
+  background: #101109;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  width: 130px;
+  text-transform: uppercase;
+}
+
+/* Величины состояния. */
+.stat {
+  display: grid;
+  grid-template-columns: 92px 1fr 46px;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.stat b {
+  font-weight: 400;
+  color: var(--dim);
+}
+
+.bar {
+  height: 8px;
+  background: #101109;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--hot);
+}
+
+.stat.warn .bar i {
+  background: var(--bad);
+}
+
+.num {
+  text-align: right;
+  color: var(--dim);
+}
+
+/* Сетка признаков. */
+.traits {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 4px;
+}
+
+.trait {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #191a11;
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.trait:hover {
+  border-color: var(--hot);
+}
+
+/* Признак закреплён у объекта. */
+.trait.held {
+  background: var(--hot);
+  color: #16170f;
+  border-color: var(--hot);
+}
+
+/* Условие выполнено прямо сейчас, но признак ещё не взят. */
+.trait.ready {
+  color: var(--ink);
+  border-color: var(--good);
+}
+
+/* От признака отказались на выбраковке. */
+.trait.declined {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.trait span {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.log {
+  max-height: 190px;
+  overflow-y: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--dim);
+  margin: 0;
+}
+
+.log b {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 6px;
+}
+
+.gallery figure {
+  margin: 0;
+  text-align: center;
+}
+
+/* Показываем не весь ЖК, а вырезку с банкой и покрупнее: иначе вклад
+   признака в силуэт на глаз не разглядеть, а ради этого галерея и заведена. */
+.gallery .shot {
+  position: relative;
+  width: 144px;
+  height: 166px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #c8a15a;
+}
+
+.gallery canvas {
+  position: absolute;
+  width: 360px;
+  height: 288px;
+  left: -108px;
+  top: -79px;
+  image-rendering: pixelated;
+}
+
+.gallery figcaption {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+}
+
+.hint {
+  color: var(--dim);
+  font-size: 11px;
+  margin: 6px 0 0;
+}
+
+code {
+  color: var(--hot);
+  letter-spacing: 2px;
+}

@@ -874,16 +874,23 @@ async function main() {
       check('текст не уезжает вбок', !manual.overflows)
 
       // Время под паспортом НЕ останавливается — на этом стоит вся игра.
-      const beforeRead = await evaluate(cdp, READ_SAVE)
-      await evaluate(cdp, pick(600))
-      await sleep(4000)
-      const afterRead = await evaluate(cdp, READ_SAVE)
-      check(
-        'под открытым паспортом время идёт',
-        afterRead.ageMs > beforeRead.ageMs + 1000,
-        `${Math.round(beforeRead.ageMs / 60000)} → ${Math.round(afterRead.ageMs / 60000)} игровых минут`,
-      )
-      await evaluate(cdp, pick(1))
+      // Увидеть это за секунды можно только ускорителем: шаг симуляции —
+      // реальная минута. В собранной версии панели нет, и проверка честно
+      // пропускается, а не жмёт несуществующую кнопку.
+      if (!(await evaluate(cdp, `!!document.querySelector('.dbg')`))) {
+        console.log('  ––   ход времени под паспортом: пропущено (нужен ускоритель из панели)')
+      } else {
+        const beforeRead = await evaluate(cdp, READ_SAVE)
+        await evaluate(cdp, pick(600))
+        await sleep(4000)
+        const afterRead = await evaluate(cdp, READ_SAVE)
+        check(
+          'под открытым паспортом время идёт',
+          afterRead.ageMs > beforeRead.ageMs + 1000,
+          `${Math.round(beforeRead.ageMs / 60000)} → ${Math.round(afterRead.ageMs / 60000)} игровых минут`,
+        )
+        await evaluate(cdp, pick(1))
+      }
 
       // Esc закрывает, игра возвращается на место.
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })

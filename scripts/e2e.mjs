@@ -831,6 +831,82 @@ async function main() {
       )
     }
 
+    // Паспорт изделия. Проверяем и то, ради чего он затеян (открывается,
+    // читается, закрывается), и главное правило игры — время под ним идёт.
+    {
+      await cdp.send('Page.navigate', { url: `${URL}?t=4` })
+      await sleep(1800)
+
+      const onGame = await evaluate(cdp, LCD_FINGERPRINT)
+      await evaluate(cdp, `document.querySelector('.pasport').click()`)
+      await sleep(900)
+
+      const manual = await evaluate(
+        cdp,
+        `(() => {
+          const sheet = document.querySelector('.manual__sheet')
+          if (!sheet) return { open: false }
+          const imgs = [...sheet.querySelectorAll('.m-shot img')]
+          return {
+            open: true,
+            sections: sheet.querySelectorAll('.m-section').length,
+            traits: sheet.querySelectorAll('.m-trait').length,
+            figures: imgs.length,
+            drawn: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
+            // Горизонтальной прокрутки быть не должно ни на одном разделе.
+            overflows: sheet.scrollWidth > sheet.clientWidth + 1,
+            opaque: getComputedStyle(document.querySelector('.manual')).opacity,
+          }
+        })()`,
+      )
+      check('кнопка ПАСПОРТ открывает руководство', manual.open)
+      check(
+        'в руководстве есть разделы и все тридцать признаков',
+        manual.sections >= 10 && manual.traits === 30,
+        `разделов ${manual.sections}, признаков ${manual.traits}`,
+      )
+      check(
+        'все иллюстрации нарисованы игрой и загрузились',
+        manual.figures > 30 && manual.drawn === manual.figures,
+        `${manual.drawn} из ${manual.figures}`,
+      )
+      check('брошюра непрозрачна', manual.opaque === '1', `прозрачность ${manual.opaque}`)
+      check('текст не уезжает вбок', !manual.overflows)
+
+      // Время под паспортом НЕ останавливается — на этом стоит вся игра.
+      const beforeRead = await evaluate(cdp, READ_SAVE)
+      await evaluate(cdp, pick(600))
+      await sleep(4000)
+      const afterRead = await evaluate(cdp, READ_SAVE)
+      check(
+        'под открытым паспортом время идёт',
+        afterRead.ageMs > beforeRead.ageMs + 1000,
+        `${Math.round(beforeRead.ageMs / 60000)} → ${Math.round(afterRead.ageMs / 60000)} игровых минут`,
+      )
+      await evaluate(cdp, pick(1))
+
+      // Esc закрывает, игра возвращается на место.
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await sleep(600)
+      check(
+        'Esc закрывает паспорт',
+        !(await evaluate(cdp, `!!document.querySelector('.manual')`)),
+      )
+      const back = diffRatio(onGame, await evaluate(cdp, LCD_FINGERPRINT))
+      check('после паспорта игра на месте', back < 0.25, `отличие ${(back * 100).toFixed(0)}%`)
+
+      // Щелчок мимо брошюры — тоже выход.
+      await evaluate(cdp, `document.querySelector('.pasport').click()`)
+      await sleep(700)
+      await evaluate(cdp, `document.querySelector('.manual').click()`)
+      await sleep(500)
+      check(
+        'щелчок мимо брошюры закрывает её',
+        !(await evaluate(cdp, `!!document.querySelector('.manual')`)),
+      )
+    }
+
     // Предложение установки. В разработке его можно вызвать параметром —
     // beforeinstallprompt в headless-браузере не приходит, а проверить, что
     // надпись помещается в телефон, надо.

@@ -38,6 +38,7 @@ import { encodeStrain, decodeStrain } from './sim/strain'
 import { copyText, readText, onPaste } from './ui/clipboard'
 import { recordAll, type JournalKind } from './sim/journal'
 import { leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
+import { openManual, closeManual, isManualOpen } from './ui/manual'
 import { installOffer, DISMISSED_KEY, type InstallOffer } from './ui/install'
 import { demoFrameAt } from './demo/timeline'
 
@@ -233,6 +234,14 @@ const shell = mountShell(root, {
   onSpeaker: toggleSound,
   onLeave: leaveForNow,
   onInstall: installPrompt,
+  onManual: () => {
+    // Время под паспортом идёт дальше: на том, что объект живёт без владельца,
+    // держится вся игра. Но ролик придерживаем — игрок занят чтением.
+    lastInputAt = Date.now()
+    openManual(__APP_VERSION__, () => {
+      lastInputAt = Date.now()
+    })
+  },
 })
 const lcd = new Lcd(shell.canvas, skin)
 shell.setMuted(!audio.on)
@@ -328,6 +337,7 @@ if (import.meta.env.DEV) {
     }
   }
   if (seed.open === 'report') ui = 'report'
+  if (seed.pasport) openManual(__APP_VERSION__)
   if (seed.traits) {
     state.traits = seed.traits.filter((k) => k in TRAIT_NAMES) as TraitKey[]
   }
@@ -379,6 +389,7 @@ let leftAt = 0
  * работает, поэтому разбор обстановки оставлен.
  */
 function leaveForNow(): void {
+  closeManual()
   const now = clock.now()
   persist(now, true)
 
@@ -848,7 +859,9 @@ function frame(ms: number): void {
   // подсовывать ему ролик незачем. Принудительный запуск (?attract=) фазу не
   // проверяет: им снимают материалы для витрины.
   const idle = Date.now() - lastInputAt
-  const idleEnough = idle > idleBeforeAttract && !document.hidden && phase === 'game'
+  // Открытый паспорт — тоже занятие: подсовывать ролик поверх чтения незачем.
+  const idleEnough =
+    idle > idleBeforeAttract && !document.hidden && phase === 'game' && !isManualOpen()
   if (attractSince === null && (forceAttract || idleEnough)) {
     attractSince = 0
   }

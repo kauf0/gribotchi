@@ -346,12 +346,25 @@ body {
  * телефоне в полноэкранном режиме оказывается единственным очевидным выходом,
  * поэтому прячется только на время ролика.
  */
-.leave {
+/* Ряд надписей под прибором: паспорт и «отойти по делам». */
+/* Паспорт тише соседа: его открывают раз в жизни, а уходят — постоянно. */
+.pasport {
+  opacity: 0.34;
+}
+
+.tray {
   position: fixed;
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
   z-index: 15;
+  display: flex;
+  gap: 8px;
+  max-width: calc(100vw - 16px);
+}
+
+.leave,
+.pasport {
   padding: 7px 16px;
   border: 1px solid rgba(217, 201, 163, 0.22);
   border-radius: 999px;
@@ -367,11 +380,14 @@ body {
 }
 
 .leave:hover,
-.leave:focus-visible {
+.leave:focus-visible,
+.pasport:hover,
+.pasport:focus-visible {
   opacity: 1;
 }
 
-.leave:focus-visible {
+.leave:focus-visible,
+.pasport:focus-visible {
   outline: 2px solid #f0e4cd;
   outline-offset: 3px;
 }
@@ -413,7 +429,7 @@ body {
 }
 
 .install.is-hidden,
-.leave.is-hidden {
+.tray.is-hidden {
   display: none;
 }
 

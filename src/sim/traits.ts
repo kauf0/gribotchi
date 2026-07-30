@@ -23,6 +23,9 @@ import { counted } from './journal'
 import { dayOf, dominantTea } from './derive'
 import * as B from './balance'
 
+/** Пороги признаков живут в balance.ts — там же, где их печатает паспорт. */
+const L = B.TRAIT_LIMITS
+
 export type TraitFamily = 'food' | 'env' | 'tea' | 'hours' | 'bond' | 'growth' | 'trouble' | 'line'
 
 /** Величины, на которые признак может влиять. */
@@ -96,7 +99,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.2,
     rank: 3,
-    earned: (s) => counted(s.tally, 'overfed') >= 3,
+    earned: (s) => counted(s.tally, 'overfed') >= L.overfedStout,
   },
   lean: {
     family: 'food',
@@ -104,7 +107,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.2,
     rank: 1,
-    earned: (s) => dayOf(s) >= 15 && poursPerDay(s) < POURS_LEAN,
+    earned: (s) => dayOf(s) >= L.daysLean && poursPerDay(s) < POURS_LEAN,
   },
   greedy: {
     family: 'food',
@@ -112,7 +115,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.15,
     rank: 3,
-    earned: (s) => dayOf(s) >= 12 && poursPerDay(s) >= POURS_GREEDY,
+    earned: (s) => dayOf(s) >= L.daysGreedy && poursPerDay(s) >= POURS_GREEDY,
   },
   even: {
     family: 'food',
@@ -121,7 +124,7 @@ export const TRAITS = {
     d: 0.1,
     rank: 1,
     earned: (s) =>
-      dayOf(s) >= 18 &&
+      dayOf(s) >= L.daysEven &&
       counted(s.tally, 'overfed') === 0 &&
       poursPerDay(s) >= POURS_EVEN[0] &&
       poursPerDay(s) <= POURS_EVEN[1],
@@ -134,7 +137,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.2,
     rank: 3,
-    earned: (s) => s.maxMold >= 0.7,
+    earned: (s) => s.maxMold >= L.moldWiry,
   },
   sterile: {
     family: 'env',
@@ -142,7 +145,7 @@ export const TRAITS = {
     down: 'resent',
     d: 0.25,
     rank: 3,
-    earned: (s) => dayOf(s) >= 8 && s.maxMold < 0.15,
+    earned: (s) => dayOf(s) >= L.daysSterile && s.maxMold < L.moldSterile,
   },
   neglected: {
     family: 'env',
@@ -150,7 +153,7 @@ export const TRAITS = {
     down: 'mold',
     d: 0.2,
     rank: 3,
-    earned: (s) => s.maxMold >= 0.5 && counted(s.tally, 'clean') <= 1,
+    earned: (s) => s.maxMold >= L.moldNeglected && counted(s.tally, 'clean') <= L.cleansNeglected,
   },
   scrubbed: {
     family: 'env',
@@ -158,7 +161,7 @@ export const TRAITS = {
     down: 'mold',
     d: 0.1,
     rank: 2,
-    earned: (s) => counted(s.tally, 'clean') >= 6,
+    earned: (s) => counted(s.tally, 'clean') >= L.cleansScrubbed,
   },
 
   // ── Сорт заварки ──────────────────────────────────────────────
@@ -168,7 +171,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.15,
     rank: 2,
-    earned: (s) => pours(s) >= 6 && dominantTea(s) === 'ginger',
+    earned: (s) => pours(s) >= L.poursDominant && dominantTea(s) === 'ginger',
   },
   wild: {
     family: 'tea',
@@ -176,7 +179,7 @@ export const TRAITS = {
     down: 'mold',
     d: 0.2,
     rank: 2,
-    earned: (s) => pours(s) >= 6 && dominantTea(s) === 'green',
+    earned: (s) => pours(s) >= L.poursDominant && dominantTea(s) === 'green',
   },
   strict: {
     family: 'tea',
@@ -184,7 +187,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.15,
     rank: 2,
-    earned: (s) => pours(s) >= 6 && dominantTea(s) === 'black',
+    earned: (s) => pours(s) >= L.poursDominant && dominantTea(s) === 'black',
   },
   motley: {
     family: 'tea',
@@ -192,7 +195,7 @@ export const TRAITS = {
     down: 'resent',
     d: 0.1,
     rank: 2,
-    earned: (s) => pours(s) >= 9 && dominantTea(s) === null,
+    earned: (s) => pours(s) >= L.poursMotley && dominantTea(s) === null,
   },
 
   // ── Часы подачи ───────────────────────────────────────────────
@@ -202,7 +205,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.1,
     rank: 3,
-    earned: (s) => pours(s) >= 5 && counted(s.tally, 'night-pour') >= pours(s) * 0.4,
+    earned: (s) => pours(s) >= L.poursHours && counted(s.tally, 'night-pour') >= pours(s) * L.nightShare,
   },
   diurnal: {
     family: 'hours',
@@ -210,7 +213,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.1,
     rank: 1,
-    earned: (s) => pours(s) >= 10 && counted(s.tally, 'night-pour') === 0,
+    earned: (s) => pours(s) >= L.poursDiurnal && counted(s.tally, 'night-pour') === 0,
   },
   shift: {
     family: 'hours',
@@ -219,9 +222,9 @@ export const TRAITS = {
     d: 0.1,
     rank: 2,
     earned: (s) =>
-      pours(s) >= 5 &&
-      counted(s.tally, 'night-pour') >= 2 &&
-      counted(s.tally, 'night-pour') < pours(s) * 0.4,
+      pours(s) >= L.poursHours &&
+      counted(s.tally, 'night-pour') >= L.nightsShift &&
+      counted(s.tally, 'night-pour') < pours(s) * L.nightShare,
   },
 
   // ── Отношения ─────────────────────────────────────────────────
@@ -231,7 +234,7 @@ export const TRAITS = {
     down: 'resent',
     d: 0.2,
     rank: 3,
-    earned: (s) => counted(s.tally, 'turned-away') >= 2,
+    earned: (s) => counted(s.tally, 'turned-away') >= L.awaysSpiteful,
   },
   forgiving: {
     family: 'bond',
@@ -239,7 +242,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.25,
     rank: 2,
-    earned: (s) => counted(s.tally, 'forgiven') >= 2,
+    earned: (s) => counted(s.tally, 'forgiven') >= L.forgivenForgiving,
   },
   devoted: {
     family: 'bond',
@@ -247,7 +250,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.15,
     rank: 1,
-    earned: (s) => dayOf(s) >= 30 && counted(s.tally, 'turned-away') === 0,
+    earned: (s) => dayOf(s) >= L.daysDevoted && counted(s.tally, 'turned-away') === 0,
   },
   abandoned: {
     family: 'bond',
@@ -255,7 +258,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.15,
     rank: 3,
-    earned: (s) => s.longestAwayMs >= 24 * 3600_000,
+    earned: (s) => s.longestAwayMs >= L.awayAbandonedMs,
   },
 
   // ── Рост ──────────────────────────────────────────────────────
@@ -265,7 +268,7 @@ export const TRAITS = {
     down: 'mold',
     d: 0.15,
     rank: 3,
-    earned: (s) => s.growth >= 1 && dayOf(s) <= 25,
+    earned: (s) => s.growth >= 1 && dayOf(s) <= L.daysEarly,
   },
   slow: {
     family: 'growth',
@@ -273,7 +276,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.25,
     rank: 3,
-    earned: (s) => s.growth >= 1 && dayOf(s) >= 40,
+    earned: (s) => s.growth >= 1 && dayOf(s) >= L.daysSlow,
   },
   stunted: {
     family: 'growth',
@@ -281,7 +284,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.15,
     rank: 2,
-    earned: (s) => dayOf(s) >= 20 && s.growth < 0.5,
+    earned: (s) => dayOf(s) >= L.daysStunted && s.growth < L.growthStunted,
   },
   ancient: {
     family: 'growth',
@@ -289,7 +292,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.1,
     rank: 3,
-    earned: (s) => dayOf(s) >= 60,
+    earned: (s) => dayOf(s) >= L.daysAncient,
   },
 
   // ── Происшествия ──────────────────────────────────────────────
@@ -299,7 +302,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.1,
     rank: 2,
-    earned: (s) => counted(s.tally, 'incident') >= 3,
+    earned: (s) => counted(s.tally, 'incident') >= L.incidentsSeasoned,
   },
   generous: {
     family: 'trouble',
@@ -307,7 +310,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.2,
     rank: 3,
-    earned: (s) => counted(s.tally, 'answer-0') >= 2,
+    earned: (s) => counted(s.tally, 'answer-0') >= L.giftsGenerous,
   },
   litigious: {
     family: 'trouble',
@@ -315,7 +318,7 @@ export const TRAITS = {
     down: 'resent',
     d: 0.15,
     rank: 3,
-    earned: (s) => counted(s.tally, 'answer-2') >= 3,
+    earned: (s) => counted(s.tally, 'answer-2') >= L.callsLitigious,
   },
   careful: {
     family: 'trouble',
@@ -323,7 +326,7 @@ export const TRAITS = {
     down: 'growth',
     d: 0.05,
     rank: 1,
-    earned: (s) => dayOf(s) >= 30 && counted(s.tally, 'incident') === 0,
+    earned: (s) => dayOf(s) >= L.daysCareful && counted(s.tally, 'incident') === 0,
   },
 
   // ── Род ───────────────────────────────────────────────────────
@@ -333,7 +336,7 @@ export const TRAITS = {
     down: 'resent',
     d: 0.05,
     rank: 1,
-    earned: (s) => s.generation === 1 && dayOf(s) >= 40,
+    earned: (s) => s.generation === 1 && dayOf(s) >= L.daysFirstborn,
   },
   longline: {
     family: 'line',
@@ -341,7 +344,7 @@ export const TRAITS = {
     down: 'food',
     d: 0.2,
     rank: 1,
-    earned: (s) => s.generation >= 5,
+    earned: (s) => s.generation >= L.generationLongline,
   },
   foundling: {
     family: 'line',

@@ -46,6 +46,11 @@ export type UrlSeed = {
    */
   install?: 'prompt' | 'ios-hint'
   /**
+   * Открыть паспорт изделия сразу: ?pasport=1. Имя не `manual` — оно занято
+   * ручным режимом панели отладки.
+   */
+  pasport?: boolean
+  /**
    * Признаки штамма для снимков: ?traits=wiry,healing,devoted. Дожидаться,
    * пока они закрепятся сами, никакой съёмки не хватит.
    */
@@ -110,6 +115,7 @@ export function readUrlSeed(search: string): UrlSeed {
       : undefined
   const attract = q.has('attract') ? (num(q, 'attract') ?? 0) : undefined
   const idle = num(q, 'idle')
+  const pasport = flag(q, 'pasport')
   const traitsRaw = q.get('traits')
   const traits = traitsRaw ? traitsRaw.split(',').filter(Boolean) : undefined
   const installRaw = q.get('install')
@@ -123,6 +129,7 @@ export function readUrlSeed(search: string): UrlSeed {
     patch,
     sim: Object.keys(sim).length > 0 ? sim : undefined,
     open,
+    pasport,
     traits,
     install,
     attract,

@@ -10,7 +10,7 @@
  */
 
 import { GEOM, SKINS, type SkinKey } from '../content/tokens'
-import { BRAND, BUTTONS, INSTALL, LEAVE } from '../content/strings'
+import { BRAND, BUTTONS, INSTALL, LEAVE, MANUAL } from '../content/strings'
 import type { InstallOffer } from '../ui/install'
 import { W, H } from './lcd'
 
@@ -29,7 +29,7 @@ export type Shell = {
   setCaption(text: string, opacity: number): void
   /** Финальная плашка ролика. */
   setTitleCard(opacity: number): void
-  /** Надпись «отойти по делам» — прячется на время ролика. */
+  /** Надписи под прибором — прячутся на время ролика. */
   setLeaveVisible(visible: boolean): void
   /**
    * Предложение поставить прибор на устройство. Появляется только там, где
@@ -94,10 +94,12 @@ export type ShellHandlers = {
   onLeave: () => void
   /** Нажали на предложение установки. */
   onInstall: () => void
+  /** Открыть паспорт изделия. */
+  onManual: () => void
 }
 
 export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
-  const { onPress, onSpeaker, onLeave, onInstall } = handlers
+  const { onPress, onSpeaker, onLeave, onInstall, onManual } = handlers
   const room = el('div', 'room')
   room.append(el('div', 'room__cloth'))
 
@@ -201,10 +203,26 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
   // Надпись лежит на столе рядом с прибором, а не на корпусе: это действие
   // игрока, а не функция игрушки. Заодно на телефоне, где itch открывает игру
   // во весь экран, она оказывается единственным очевидным выходом.
+  /*
+   * Две надписи под прибором в общем ряду. Класс `leave` сохранён намеренно:
+   * на него завязаны e2e и генератор витринных кадров, который убирает
+   * кнопку из обложек.
+   */
+  const tray = el('div', 'tray')
+
+  // Класс `pasport`, а не `manual`: последний занят самим оверлеем брошюры,
+  // и общее правило таблетки красило её своей прозрачностью.
+  const manual = el('button', 'pasport')
+  manual.type = 'button'
+  manual.textContent = MANUAL.open
+  manual.addEventListener('click', onManual)
+
   const leave = el('button', 'leave')
   leave.type = 'button'
   leave.textContent = LEAVE
   leave.addEventListener('click', onLeave)
+
+  tray.append(manual, leave)
 
   // Предложение установки — сверху, чтобы не спорить с «отойти по делам»
   // внизу. Появляется редко и один раз, поэтому места под него не резервируем.
@@ -213,7 +231,7 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
   install.classList.add('is-hidden')
   install.addEventListener('click', onInstall)
 
-  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard, leave, install)
+  root.append(room, stage, el('div', 'room__vignette'), scrim, caption, titleCard, tray, install)
 
   let currentScale = 1
   let cssScale = 1
@@ -278,7 +296,7 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
       shakeY = y
       applyTransform()
     },
-    setLeaveVisible: (visible) => leave.classList.toggle('is-hidden', !visible),
+    setLeaveVisible: (visible) => tray.classList.toggle('is-hidden', !visible),
     setInstall: (offer) => {
       install.classList.toggle('is-hidden', !offer.show)
       if (!offer.show) return

@@ -167,6 +167,68 @@ type Deltas = { food?: number; growth?: number; mold?: number; resentment?: numb
 export type IncidentKind = keyof typeof INCIDENT_EFFECTS
 export const INCIDENT_KINDS = Object.keys(INCIDENT_EFFECTS) as IncidentKind[]
 
+// ── пороги признаков ──────────────────────────────────────────────
+
+/**
+ * Числа, по которым закрепляются признаки штамма (sim/traits.ts).
+ *
+ * Живут здесь, а не по месту в условиях, по двум причинам. Первая — общее
+ * правило этого файла: в логике не должно остаться ни одной магической
+ * константы. Вторая важнее: те же числа печатает паспорт изделия, и будь они
+ * литералами внутри условий, руководство разошлось бы с игрой на первой же
+ * правке баланса. Такое руководство хуже отсутствующего.
+ *
+ * Дни — игровые (три реальных часа каждый).
+ */
+export const TRAIT_LIMITS = {
+  // Питание
+  overfedStout: 3,
+  daysLean: 15,
+  daysGreedy: 12,
+  daysEven: 18,
+
+  // Среда
+  moldWiry: 0.7,
+  moldSterile: 0.15,
+  daysSterile: 8,
+  moldNeglected: 0.5,
+  cleansNeglected: 1,
+  cleansScrubbed: 6,
+
+  // Сорт заварки
+  poursDominant: 6,
+  poursMotley: 9,
+
+  // Часы подачи
+  poursHours: 5,
+  nightShare: 0.4,
+  poursDiurnal: 10,
+  nightsShift: 2,
+
+  // Отношения
+  awaysSpiteful: 2,
+  forgivenForgiving: 2,
+  daysDevoted: 30,
+  awayAbandonedMs: 24 * 3600_000,
+
+  // Рост
+  daysEarly: 25,
+  daysSlow: 40,
+  daysStunted: 20,
+  growthStunted: 0.5,
+  daysAncient: 60,
+
+  // Происшествия
+  incidentsSeasoned: 3,
+  giftsGenerous: 2,
+  callsLitigious: 3,
+  daysCareful: 30,
+
+  // Род
+  daysFirstborn: 40,
+  generationLongline: 5,
+} as const
+
 // ── поколения ─────────────────────────────────────────────────────
 
 /** Ниже этого роста гриб не успевает отпочковать дочерний слой. */

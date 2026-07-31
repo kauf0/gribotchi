@@ -963,10 +963,33 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   })
 }
 
-Promise.all(CANVAS_FONTS.map(([font, text]) => document.fonts.load(font, text)))
-  .catch(() => undefined)
-  .then(() => document.fonts.ready)
-  .then(() => {
-    if (import.meta.env.DEV) mountDebugPanel(debug, applySkin)
-    requestAnimationFrame(frame)
-  })
+/**
+ * Сколько ждём начертания канваса. В норме они приезжают за четверть секунды,
+ * так что это не порог, а предохранитель: зависший запрос шрифта не должен
+ * оставлять владельца перед мёртвым экраном навсегда.
+ */
+const FONT_WAIT_MS = 1500
+
+let looping = false
+
+/**
+ * Запуск цикла кадров — ровно один раз, каким бы путём сюда ни пришли:
+ * по готовности шрифтов, по истечении срока или после отказа. Первый кадр
+ * запасным начертанием лучше, чем отсутствие первого кадра.
+ */
+function startLoop(): void {
+  if (looping) return
+  looping = true
+  if (import.meta.env.DEV) mountDebugPanel(debug, applySkin)
+  requestAnimationFrame(frame)
+}
+
+// Ждём ровно те начертания, которыми рисует канвас. document.fonts.ready здесь
+// была бы ошибкой: она ждёт ВСЕ шрифты документа, включая PT Sans Narrow
+// надписей корпуса, — а канвас им не рисует ничего.
+Promise.race([
+  Promise.all(CANVAS_FONTS.map(([font, text]) => document.fonts.load(font, text))),
+  new Promise((resolve) => setTimeout(resolve, FONT_WAIT_MS)),
+])
+  .then(startLoop)
+  .catch(startLoop)

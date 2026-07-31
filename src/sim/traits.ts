@@ -20,6 +20,7 @@
 
 import type { GameState } from './state'
 import { counted } from './journal'
+import { namedByKey } from './named'
 import { dayOf, dominantTea } from './derive'
 import * as B from './balance'
 
@@ -371,11 +372,21 @@ export const TRAIT_SLOTS = 3
  * При споре побеждает ВЫРАЗИТЕЛЬНЫЙ, а не первый по таблице. Иначе места
  * занимали бы признаки с самыми общими условиями, и стиль ухода перестал бы
  * что-либо решать — ровно это и показал стенд на первой версии.
+ *
+ * Но если владелец взял задание, его признаки идут ПЕРЕД выразительными.
+ * Порядок обязан меняться именно здесь, до отсева по семьям: иначе нужный
+ * признак проиграл бы место более выразительному родичу и не появился бы
+ * вовсе — задание оказалось бы украшением. Условия при этом те же: задание
+ * не выдаёт признак, а лишь пропускает его вперёд в споре.
  */
 export function earnedTraits(s: GameState): TraitKey[] {
   const taken = new Set(s.traits.map((k) => TRAITS[k].family))
   const out: TraitKey[] = []
-  const byRank = [...TRAIT_KEYS].sort((a, b) => TRAITS[b].rank - TRAITS[a].rank)
+  const wanted = new Set<TraitKey>(namedByKey(s.target)?.traits ?? [])
+  const byRank = [...TRAIT_KEYS].sort((a, b) => {
+    const byTarget = Number(wanted.has(b)) - Number(wanted.has(a))
+    return byTarget !== 0 ? byTarget : TRAITS[b].rank - TRAITS[a].rank
+  })
   for (const key of byRank) {
     const def = TRAITS[key]
     if (s.traits.includes(key)) continue
@@ -388,6 +399,23 @@ export function earnedTraits(s: GameState): TraitKey[] {
     taken.add(def.family)
   }
   return out
+}
+
+/**
+ * В каком порядке предлагать занятые места на выбраковке.
+ *
+ * Бланк умещает только ДВЕ кнопки исключения из трёх занятых мест, поэтому
+ * порядок здесь решает, что игрок вообще может выбросить. Признаки задания
+ * уходят в конец: пока есть что предложить вместо них, прибор не станет
+ * предлагать сломать наполовину собранную цель.
+ *
+ * Считается и для бланка, и для обработчика нажатия — иначе показанная
+ * кнопка исключила бы не тот признак.
+ */
+export function cullOrder(s: GameState): TraitKey[] {
+  const wanted = new Set<TraitKey>(namedByKey(s.target)?.traits ?? [])
+  // Сортировка устойчива, поэтому внутри групп сохраняется порядок получения.
+  return [...s.traits].sort((a, b) => Number(wanted.has(a)) - Number(wanted.has(b)))
 }
 
 /**

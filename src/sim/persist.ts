@@ -11,6 +11,7 @@ import { createState, emptyPoured, SAVE_VERSION, type GameState } from './state'
 import { trim, type JournalEntry, type Tally, type TallyKey } from './journal'
 import { TRAIT_KEYS, TRAIT_SLOTS, type TraitKey } from './traits'
 import { decodeStrain, strainKey } from './strain'
+import { namedByKey } from './named'
 import { CLEAN_STRESS_MS, TEA_KEYS, type TeaKey } from './balance'
 
 const KEY = 'gribochi.save.v1'
@@ -189,6 +190,14 @@ function migrate(parsed: unknown, now: number): GameState | null {
       : decoded.length
   merged.offered =
     typeof raw.offered === 'string' && decodeStrain(raw.offered) !== null ? raw.offered : null
+
+  /**
+   * Задание. У прежних сохранений его нет и взяться ему неоткуда: цель ставит
+   * владелец, а не игра. Ноль здесь честен — реестр откроется без отметки.
+   * Сверяем с таблицей имён: задание на штамм, которого больше нет в игре,
+   * висело бы невыполнимым.
+   */
+  merged.target = namedByKey(raw.target)?.key ?? null
 
   /**
    * Метки времени из будущего оставлять нельзя. Их пишет отладочный ускоритель

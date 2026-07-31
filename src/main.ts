@@ -33,7 +33,8 @@ import { intentFor, type Phase, type UiMode } from './ui/controller'
 import { reactionTo, type Signals } from './ui/reactions'
 import { observe, noteReturn } from './sim/observations'
 import { incidentFor, answer, type IncidentKind } from './sim/incidents'
-import { earnedTraits, TRAIT_SLOTS, type TraitKey } from './sim/traits'
+import { earnedTraits, cullOrder, TRAIT_SLOTS, type TraitKey } from './sim/traits'
+import { namedByKey } from './sim/named'
 import { encodeStrain, decodeStrain } from './sim/strain'
 import { copyText, readText, onPaste } from './ui/clipboard'
 import { recordAll, type JournalKind } from './sim/journal'
@@ -201,7 +202,8 @@ function watchTraits(now: number): void {
 
   if (state.traits.length < TRAIT_SLOTS) {
     state = { ...state, traits: [...state.traits, gained] }
-    fx.say(CULL.fixed(TRAIT_NAMES[gained]), now)
+    const wanted = namedByKey(state.target)?.traits.includes(gained) ?? false
+    fx.say(wanted ? CULL.fixedTarget(TRAIT_NAMES[gained]) : CULL.fixed(TRAIT_NAMES[gained]), now)
     persist(now, true)
     return
   }
@@ -610,7 +612,9 @@ function handlePress(id: ButtonId): void {
         persist(now, true)
         return
       }
-      const dropped = state.traits[intent.index]
+      // Тот же порядок, что и на бланке: иначе кнопка исключила бы не тот
+      // признак, который на ней написан.
+      const dropped = cullOrder(state)[intent.index]
       if (!dropped) return
       state = { ...state, traits: [...state.traits.filter((k) => k !== dropped), gained] }
       fx.say(CULL.dropped(TRAIT_NAMES[dropped]), now)
@@ -787,7 +791,7 @@ function buildScreen(t: number): ScreenState {
     return { ...screen, mode: 'graft', report: graftBlank(pendingGraft) }
   }
   if (ui === 'cull' && pendingTrait) {
-    return { ...screen, mode: 'cull', report: cullBlank(pendingTrait, state.traits) }
+    return { ...screen, mode: 'cull', report: cullBlank(pendingTrait, cullOrder(state)) }
   }
   if (ui === 'strain') {
     return { ...screen, mode: 'strain', report: strainBlank(state, strainCode(state)) }

@@ -120,6 +120,20 @@ export type GameState = {
    * Ничего не затирает — выбор скрещивать или нет остаётся за владельцем.
    */
   offered: string | null
+
+  /**
+   * Задание на селекцию: ключ именованного штамма, к которому владелец идёт.
+   *
+   * Без него именованные штаммы были бы списком, а не целью: признаки
+   * закрепляются сами, свободное место занимает первый подошедший, и собрать
+   * конкретную тройку — наполовину везение. Задание НИЧЕГО не ускоряет
+   * и не смягчает условий — оно лишь перестаёт мешать: при споре за место
+   * побеждает нужный признак, а выбраковка не предлагает исключить уже
+   * добытое. Играть по-прежнему приходится в нужном стиле.
+   *
+   * Принадлежит владельцу, а не объекту: переживает смену поколения.
+   */
+  target: string | null
 }
 
 export type NewLifeOpts = {
@@ -134,6 +148,7 @@ export type NewLifeOpts = {
   bred?: string[]
   bottlings?: number
   offered?: string | null
+  target?: string | null
 }
 
 export function createState(now: number, opts: NewLifeOpts = {}): GameState {
@@ -172,6 +187,7 @@ export function createState(now: number, opts: NewLifeOpts = {}): GameState {
     bred: opts.bred ?? [],
     bottlings: opts.bottlings ?? 0,
     offered: opts.offered ?? null,
+    target: opts.target ?? null,
   }
 }
 

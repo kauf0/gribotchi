@@ -6,7 +6,7 @@
 import { clamp01, createState, type GameState } from './state'
 import { bump, record, type Grade, type JournalEntry } from './journal'
 import { strainKey } from './strain'
-import { namedStrain } from './named'
+import { namedStrain, namedByKey, namedKey } from './named'
 import { rankOf } from './rank'
 import { STRAIN_NAMES, RANK_NAMES } from '../content/strings'
 import { canBottle, canClean, canFeed, dayOf, diagnose, dominantTea } from './derive'
@@ -112,11 +112,20 @@ export function bottle(s: GameState, now: number): ActionResult {
   const noted = note(s, now, { kind: 'batch', tea: dominantTea(s), grade })
 
   const kept = registered(noted)
+  // Задание закрывается РОЗЛИВОМ, а не сбором признаков: «вывести штамм»
+  // в этой игре означает довести его до партии.
+  const done = targetDone(s)
   return {
-    state: heir(kept, now, B.BOTTLED_START_GROWTH),
-    msg: bottledMsg(s, kept),
+    state: heir(done ? { ...kept, target: null } : kept, now, B.BOTTLED_START_GROWTH),
+    msg: bottledMsg(s, kept, done),
     effect: 'hearts',
   }
+}
+
+/** Совпал ли разливаемый штамм с взятым заданием. */
+function targetDone(s: GameState): boolean {
+  const target = namedByKey(s.target)
+  return target !== null && namedKey(target) === strainKey(s.traits)
 }
 
 /**
@@ -127,10 +136,12 @@ export function bottle(s: GameState, now: number): ActionResult {
  * дежурная строка. Раньше все три выглядели одинаково, и выведение
  * АПТЕЧНОГО ничем не отличалось от сотой партии.
  */
-function bottledMsg(before: GameState, after: GameState): string {
+function bottledMsg(before: GameState, after: GameState, done: boolean): string {
   const named = namedStrain(before.traits)
   if (!named) return MSG.bottled
   const name = STRAIN_NAMES[named.key as keyof typeof STRAIN_NAMES]
+  // Выполненное задание важнее новизны: к нему шли намеренно.
+  if (done) return MSG.targetDone(name)
   const first = after.bred.length > before.bred.length
   return first ? MSG.bottledFirst(name) : MSG.bottledNamed(name)
 }
@@ -176,6 +187,7 @@ const ownersKeep = (s: GameState) => ({
   crossings: s.crossings,
   bred: s.bred,
   offered: s.offered,
+  target: s.target,
 })
 
 /**

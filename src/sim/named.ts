@@ -15,6 +15,13 @@
  * только пересадкой чужой закваски — они и есть живое доказательство, зачем
  * нужен обмен. Пометка graftOnly не пишется руками, а СЧИТАЕТСЯ по семьям:
  * поправят таблицу признаков — пометка поедет сама и врать не начнёт.
+ *
+ * ВСЁ, что берётся из таблицы признаков, вычисляется ЛЕНИВО. Таблица смотрит
+ * сюда в ответ — задание на селекцию поднимает нужные признаки в очереди, —
+ * и модули ссылаются друг на друга. Круг безопасен ровно до тех пор, пока
+ * в теле этого файла при загрузке ничего из traits.ts не вычисляется:
+ * к первому вызову обе таблицы готовы. Здесь уже стояло TABLE.map(по семьям),
+ * и три набора тестов падали с «Cannot read properties of undefined».
  */
 
 import { TRAITS, type TraitKey } from './traits'
@@ -62,30 +69,35 @@ const TABLE: [string, [TraitKey, TraitKey, TraitKey]][] = [
   ['twofaced', ['spiteful', 'forgiving', 'shift']],
 ]
 
-/** Есть ли в тройке два признака одной семьи. */
-const mixesFamilies = (traits: readonly TraitKey[]): boolean =>
-  new Set(traits.map((k) => TRAITS[k].family)).size < traits.length
-
 export const NAMED: readonly NamedStrain[] = TABLE.map(([key, traits]) => ({
   key,
   traits,
-  graftOnly: mixesFamilies(traits),
+  // Считается при обращении, а не при загрузке — см. про круг выше.
+  get graftOnly(): boolean {
+    return new Set(traits.map((k) => TRAITS[k].family)).size < traits.length
+  },
 }))
 
 /** Поиск по ключу набора: порядок признаков значения не имеет. */
-const BY_KEY = new Map(NAMED.map((n) => [strainKey([...n.traits]), n]))
+let byKey: Map<string, NamedStrain> | null = null
+const index = (): Map<string, NamedStrain> =>
+  (byKey ??= new Map(NAMED.map((n) => [namedKey(n), n])))
 
 /** Имеет ли этот набор признаков имя. null — безымянный штамм, и это нормально. */
 export function namedStrain(traits: readonly TraitKey[]): NamedStrain | null {
   if (traits.length < 3) return null
-  return BY_KEY.get(strainKey([...traits])) ?? null
+  return index().get(strainKey([...traits])) ?? null
 }
 
 /** Сколько имён найдено в реестре владельца. */
 export const namesFound = (bred: readonly string[]): NamedStrain[] => {
   const owned = new Set(bred)
-  return NAMED.filter((n) => owned.has(strainKey([...n.traits])))
+  return NAMED.filter((n) => owned.has(namedKey(n)))
 }
+
+/** Именованный штамм по его ключу. null — ключа такого нет. */
+export const namedByKey = (key: unknown): NamedStrain | null =>
+  typeof key === 'string' ? (NAMED.find((n) => n.key === key) ?? null) : null
 
 /** Ключ набора именованного штамма — тот же, что лежит в реестре. */
 export const namedKey = (n: NamedStrain): string => strainKey([...n.traits])

@@ -16,7 +16,8 @@ import { strainKey } from '../src/sim/strain'
 import { TRAITS, TRAIT_KEYS, TRAIT_SLOTS, type TraitKey } from '../src/sim/traits'
 import { STRAIN_NAMES, RANK_NAMES, TRAIT_NAMES } from '../src/content/strings'
 import { RANKS } from '../src/sim/balance'
-import { bottle, sos } from '../src/sim/actions'
+import { bottle } from '../src/sim/actions'
+import { summary } from '../src/view/reports'
 import { createState, type GameState } from '../src/sim/state'
 import { MSG } from '../src/content/strings'
 
@@ -173,9 +174,18 @@ describe('имя штамма звучит при розливе', () => {
     expect(r.msg).toBe(MSG.bottled)
   })
 
-  it('разряд владельца стоит в сводке — и у живого, и у погибшего', () => {
-    const owner = { ...createState(T0), bred: NAMED.slice(0, 20).map(namedKey) }
-    expect(sos(owner).report?.join(' ')).toContain(RANK_NAMES.honored)
-    expect(sos({ ...owner, alive: false }).report?.join(' ')).toContain(RANK_NAMES.honored)
+  it('разряд владельца стоит в сводке — там же, где реестр', () => {
+    // Именно в summary(), а не в diagnose(): сводка — единственный экран,
+    // который игрок читает, а отчёт службы в неё же и попадает.
+    const owner = { ...createState(T0), bred: NAMED.slice(0, 20).map(namedKey), bottlings: 31 }
+    const lines = summary(owner, 0).lines.join(' ')
+    expect(lines).toContain(RANK_NAMES.honored)
+    expect(lines).toContain('ВЫВЕДЕНО 20')
+    expect(lines).toContain('РОЗЛИВОВ 31')
+  })
+
+  it('разряд виден и у погибшего объекта: он про владельца', () => {
+    const owner = { ...createState(T0), alive: false, bred: NAMED.slice(0, 20).map(namedKey) }
+    expect(summary(owner, 0).lines.join(' ')).toContain(RANK_NAMES.honored)
   })
 })

@@ -5,6 +5,7 @@
 
 import type { GameState } from '../sim/state'
 import { dayOf, diagnose } from '../sim/derive'
+import { rankOf } from '../sim/rank'
 import { DAUGHTER_MIN_GROWTH, TEA_KEYS } from '../sim/balance'
 import {
   BUTTONS,
@@ -16,6 +17,7 @@ import {
   REPORT,
   STRAIN,
   TRAIT_NAMES,
+  RANK_NAMES,
   objectNo,
   dayNo,
 } from '../content/strings'
@@ -80,7 +82,10 @@ export function summary(s: GameState, scroll: number): Report {
     // Штамм и реестр — здесь, а не отдельным экраном: сводка и так про объект,
     // а лишняя навигация на трёх кнопках дороже двух строк.
     ...(s.traits.length ? [`ШТАММ: ${s.traits.map((k) => TRAIT_NAMES[k]).join(' · ')}`] : []),
-    STRAIN.registry(s.bred.length),
+    STRAIN.registry(s.bred.length, s.bottlings),
+    // Разряд — единственное в сводке, что относится к ВЛАДЕЛЬЦУ, а не
+    // к объекту. Стоит рядом с реестром, из которого и считается.
+    STRAIN.rank(RANK_NAMES[rankOf(s.bred).key]),
     REPORT.version(__APP_VERSION__),
     '',
     REPORT.journal,
@@ -159,7 +164,7 @@ export function strainBlank(s: GameState, code: string): Report {
   if (s.traits.length === 0) lines.push(STRAIN.none)
   else for (const key of s.traits) lines.push(`· ${TRAIT_NAMES[key]}`)
 
-  lines.push('', STRAIN.registry(s.bred.length))
+  lines.push('', STRAIN.registry(s.bred.length, s.bottlings))
   if (s.offered) lines.push(STRAIN.offered(prettyCode(s.offered)), STRAIN.offeredHint)
 
   return { title: STRAIN.title, lines, scroll: 0, hint: STRAIN.hint }

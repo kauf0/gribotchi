@@ -7,8 +7,7 @@ import { clamp01, createState, type GameState } from './state'
 import { bump, record, type Grade, type JournalEntry } from './journal'
 import { strainKey } from './strain'
 import { namedStrain, namedByKey, namedKey } from './named'
-import { rankOf } from './rank'
-import { STRAIN_NAMES, RANK_NAMES } from '../content/strings'
+import { STRAIN_NAMES } from '../content/strings'
 import { canBottle, canClean, canFeed, dayOf, diagnose, dominantTea } from './derive'
 import { MSG } from '../content/strings'
 import * as B from './balance'
@@ -91,12 +90,7 @@ export function clean(s: GameState, now: number): ActionResult {
 
 /** СОС — аварийная служба: не воскрешает, а честно докладывает обстановку. */
 export function sos(s: GameState): ActionResult {
-  // Разряд — единственное в сводке, что относится к ВЛАДЕЛЬЦУ, а не к объекту,
-  // и потому дописывается здесь, а не в diagnose(): та обязана остаться
-  // показаниями прибора. Заодно это разрывает круг импортов — разряд знает
-  // про признаки, а признаки про производные величины.
-  const rank = `РАЗРЯД ВЛАДЕЛЬЦА: ${RANK_NAMES[rankOf(s.bred).key]}.`
-  return { state: s, msg: MSG.report, effect: 'none', report: [...diagnose(s), rank] }
+  return { state: s, msg: MSG.report, effect: 'none', report: diagnose(s) }
 }
 
 /**

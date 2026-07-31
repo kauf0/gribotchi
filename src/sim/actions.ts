@@ -6,6 +6,9 @@
 import { clamp01, createState, type GameState } from './state'
 import { bump, record, type Grade, type JournalEntry } from './journal'
 import { strainKey } from './strain'
+import { namedStrain } from './named'
+import { rankOf } from './rank'
+import { STRAIN_NAMES, RANK_NAMES } from '../content/strings'
 import { canBottle, canClean, canFeed, dayOf, diagnose, dominantTea } from './derive'
 import { MSG } from '../content/strings'
 import * as B from './balance'
@@ -88,7 +91,12 @@ export function clean(s: GameState, now: number): ActionResult {
 
 /** СОС — аварийная служба: не воскрешает, а честно докладывает обстановку. */
 export function sos(s: GameState): ActionResult {
-  return { state: s, msg: MSG.report, effect: 'none', report: diagnose(s) }
+  // Разряд — единственное в сводке, что относится к ВЛАДЕЛЬЦУ, а не к объекту,
+  // и потому дописывается здесь, а не в diagnose(): та обязана остаться
+  // показаниями прибора. Заодно это разрывает круг импортов — разряд знает
+  // про признаки, а признаки про производные величины.
+  const rank = `РАЗРЯД ВЛАДЕЛЬЦА: ${RANK_NAMES[rankOf(s.bred).key]}.`
+  return { state: s, msg: MSG.report, effect: 'none', report: [...diagnose(s), rank] }
 }
 
 /**
@@ -103,11 +111,28 @@ export function bottle(s: GameState, now: number): ActionResult {
   // Сорт партии — итог дневных решений. Поили вразнобой — партия без сорта.
   const noted = note(s, now, { kind: 'batch', tea: dominantTea(s), grade })
 
+  const kept = registered(noted)
   return {
-    state: heir(registered(noted), now, B.BOTTLED_START_GROWTH),
-    msg: MSG.bottled,
+    state: heir(kept, now, B.BOTTLED_START_GROWTH),
+    msg: bottledMsg(s, kept),
     effect: 'hearts',
   }
+}
+
+/**
+ * Что прибор скажет при розливе.
+ *
+ * Три случая, и различать их стоит: впервые выведенный именованный штамм —
+ * событие, повторный розлив того же — просто работа, безымянная тройка —
+ * дежурная строка. Раньше все три выглядели одинаково, и выведение
+ * АПТЕЧНОГО ничем не отличалось от сотой партии.
+ */
+function bottledMsg(before: GameState, after: GameState): string {
+  const named = namedStrain(before.traits)
+  if (!named) return MSG.bottled
+  const name = STRAIN_NAMES[named.key as keyof typeof STRAIN_NAMES]
+  const first = after.bred.length > before.bred.length
+  return first ? MSG.bottledFirst(name) : MSG.bottledNamed(name)
 }
 
 /**

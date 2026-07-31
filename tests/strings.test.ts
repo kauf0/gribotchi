@@ -20,6 +20,7 @@ import {
   REPORT,
   START,
   TRAIT_NAMES,
+  STRAIN_NAMES,
   overdue,
   wereAway,
 } from '../src/content/strings'
@@ -51,13 +52,22 @@ const check = (where: string, text: string, limit: number) => {
 
 describe('длина текстов', () => {
   it('служебные сообщения помещаются в строку', () => {
-    for (const [key, text] of Object.entries(MSG)) check(`MSG.${key}`, text, MSG_LIMIT)
+    for (const [key, text] of Object.entries(MSG)) {
+      // Часть сообщений — с подстановкой; их проверяет следующий случай.
+      if (typeof text === 'string') check(`MSG.${key}`, text, MSG_LIMIT)
+    }
   })
 
   it('самые длинные подставляемые сообщения тоже помещаются', () => {
     // Числа растут: день трёхзначным быть может, часы отсутствия тоже.
     check('overdue', overdue(999), MSG_LIMIT)
     check('wereAway', wereAway(999), MSG_LIMIT)
+
+    // Имя штамма подставляется в строку розлива. Берём САМОЕ ДЛИННОЕ из
+    // существующих: добавят имя длиннее — упадёт здесь, а не на чужом экране.
+    const longest = Object.values(STRAIN_NAMES).reduce((a, b) => (b.length > a.length ? b : a))
+    check('bottledNamed', MSG.bottledNamed(longest), MSG_LIMIT)
+    check('bottledFirst', MSG.bottledFirst(longest), MSG_LIMIT)
   })
 
   it('реплики гриба помещаются в облачко', () => {

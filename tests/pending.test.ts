@@ -1,11 +1,15 @@
 /**
- * Отложенные пометки и гибель объекта.
+ * Отложенные пометки: гибель объекта и уход владельца.
  *
  * Бланк выбраковки и бланк пересадки останавливают закрепление признаков: пока
  * ответа нет, watchTraits() выходит первой строкой. Если объект гибнет с
  * открытым бланком, показать бланк уже негде — значит пометку обязан снять сам
  * прибор, иначе следующее поколение не закрепит ни одного признака до
  * перезагрузки страницы.
+ *
+ * У ухода «по делам» ответ обратный. Объект жив, признак честно заработан,
+ * и снять пометку молча значило бы отобрать заслуженное. Поэтому бланк
+ * ВОЗВРАЩАЕТСЯ при включении — как это уже делается с происшествием.
  *
  * Проверяется это только целиком: пометки живут в main.ts, и чистой функции,
  * которую можно позвать отдельно, здесь нет. Поэтому модуль запускается как
@@ -28,6 +32,7 @@ const hours = (n: number) => n * 3_600_000
 /** Что прибор показал и через что удалось нажать. */
 const rig = vi.hoisted(() => ({
   press: null as ((id: ButtonId) => void) | null,
+  leave: null as (() => void) | null,
   frame: null as ((ms: number) => void) | null,
   screens: [] as ScreenState[],
 }))
@@ -50,8 +55,12 @@ function fakeCanvas(): HTMLCanvasElement {
 }
 
 vi.mock('../src/view/shell', () => ({
-  mountShell: (_root: unknown, handlers: { onPress: (id: ButtonId) => void }) => {
+  mountShell: (
+    _root: unknown,
+    handlers: { onPress: (id: ButtonId) => void; onLeave: () => void },
+  ) => {
     rig.press = handlers.onPress
+    rig.leave = handlers.onLeave
     const canvas = fakeCanvas()
     return new Proxy(
       { canvas },
@@ -107,6 +116,8 @@ function stubBrowser(saved: GameState): Storage {
   const win: Record<string, unknown> = {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
+    // Уход «по делам» смотрит, есть ли куда вернуться, и во врезке ли игра.
+    history: { length: 1 },
   }
   win.self = win
   win.top = win
@@ -134,6 +145,9 @@ function stubBrowser(saved: GameState): Storage {
 }
 
 const press = (id: ButtonId): void => rig.press?.(id)
+
+/** «Отойти по делам»: прибор гаснет, время идёт дальше. */
+const leave = (): void => rig.leave?.()
 
 /**
  * Кадр. Метка времени берётся с запасом: по ней прибор отмеряет только
@@ -195,6 +209,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.resetModules()
   rig.press = null
+  rig.leave = null
   rig.frame = null
   rig.screens = []
 })
@@ -242,5 +257,49 @@ describe('гибель с открытым бланком', () => {
     tick()
 
     expect(savedTraits(storage)).toContain('abandoned')
+  })
+})
+
+describe('уход с открытым бланком', () => {
+  it('после «отойти по делам» бланк выбраковки возвращается', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+
+    // Три места заняты, а ЗАБЫТЫЙ заработан — прибор потребует выбраковки.
+    await powerOn(dying({ food: 0.9, mold: 0.1, traits: ['stout', 'wiry', 'healing'] }))
+    expect(shown().mode).toBe('cull')
+
+    // Уходим, не ответив, и возвращаемся.
+    leave()
+    tick()
+    expect(shown().mode).toBe('start')
+
+    // Загрузка укладывается в один кадр: tick() подаёт метку с запасом.
+    press('C')
+    tick()
+
+    // Признак заслужен — бланк обязан вернуться, а не пропасть вместе
+    // с закреплением признаков.
+    expect(shown().mode).toBe('cull')
+  })
+
+  it('ответ на вернувшемся бланке принимается', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+
+    const storage = await powerOn(
+      dying({ food: 0.9, mold: 0.1, traits: ['stout', 'wiry', 'healing'] }),
+    )
+    leave()
+    tick()
+    press('C')
+    tick()
+
+    // ЧАЙ исключает первый признак и ставит на его место заработанный.
+    press('A')
+    tick()
+    const traits = savedTraits(storage)
+    expect(traits).toContain('abandoned')
+    expect(traits).not.toContain('stout')
   })
 })

@@ -63,7 +63,12 @@ async function evaluate(cdp, expression) {
     awaitPromise: true,
     returnByValue: true,
   })
-  if (exceptionDetails) throw new Error(exceptionDetails.text ?? 'ошибка на странице')
+  if (exceptionDetails) {
+    // Голое «Uncaught» ничего не говорит: подкладываем описание исключения
+    // и начало выражения, иначе искать причину приходится наугад.
+    const why = exceptionDetails.exception?.description ?? exceptionDetails.text ?? 'ошибка на странице'
+    throw new Error(`${why}\n  в выражении: ${expression.trim().slice(0, 120)}`)
+  }
   return result.value
 }
 
@@ -831,6 +836,54 @@ async function main() {
       )
     }
 
+    // Музыка не должна играть из свёрнутого приложения. Проверяем через
+    // document.hidden, потому что его и читает наш обработчик: настоящее
+    // сворачивание в headless не изобразить.
+    {
+      await cdp.send('Page.navigate', { url: `${URL}?t=4` })
+      await sleep(1200)
+      await realClick(cdp, ...(await centerOf(cdp, 2)))
+      await sleep(4200)
+
+      const playing = await evaluate(cdp, `window.__notes`)
+      await sleep(1500)
+      const before = await evaluate(cdp, `window.__notes`)
+      check('на переднем плане музыка идёт', before > playing, `${playing} → ${before}`)
+
+      await evaluate(
+        cdp,
+        `(() => {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+          document.dispatchEvent(new Event('visibilitychange'))
+          window.dispatchEvent(new Event('visibilitychange'))
+        })()`,
+      )
+      await sleep(2000)
+      const hidden = await evaluate(cdp, `window.__notes`)
+      await sleep(1500)
+      const stillHidden = await evaluate(cdp, `window.__notes`)
+      check(
+        'в фоне прибор замолкает',
+        stillHidden === hidden,
+        `нот за полторы секунды: ${stillHidden - hidden}`,
+      )
+
+      await evaluate(
+        cdp,
+        `(() => {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+          document.dispatchEvent(new Event('visibilitychange'))
+          window.dispatchEvent(new Event('visibilitychange'))
+        })()`,
+      )
+      await sleep(2000)
+      check(
+        'по возвращении музыка идёт снова',
+        (await evaluate(cdp, `window.__notes`)) > stillHidden,
+        `было ${stillHidden}`,
+      )
+    }
+
     // Паспорт изделия. Проверяем и то, ради чего он затеян (открывается,
     // читается, закрывается), и главное правило игры — время под ним идёт.
     {
@@ -1041,6 +1094,8 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e.message)
-  process.exit(1)
+  console.error(`\nсорвалось: ${e.message}`)
+  // Вывод в канал буферизуется, и process.exit() обрубил бы всё напечатанное
+  // до сих пор — а это и есть список пройденных проверок.
+  process.exitCode = 1
 })

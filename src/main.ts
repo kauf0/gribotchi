@@ -827,9 +827,19 @@ function frame(ms: number): void {
     phase = 'game'
     if (awayMessage) fx.say(awayMessage, now)
     awayMessage = null
-    // Доклад о происшествии — после загрузки: на экране запуска отвечать
-    // ещё нечем, прибор туда даже не смотрит.
+    /*
+     * Бланки, оставшиеся без ответа, возвращаются на экран после загрузки:
+     * на экране запуска отвечать ещё нечем, прибор туда даже не смотрит.
+     *
+     * Выбраковка и пересадка возвращаются по той же причине, но им это ещё
+     * нужнее. Уйти «по делам» можно с открытым бланком, и признак при этом
+     * честно заработан: снять пометку молча — значит отобрать заслуженное,
+     * а оставить её без бланка — навсегда остановить закрепление признаков
+     * (watchTraits() выходит первой строкой, пока пометка висит).
+     */
     if (pendingIncident) ui = 'incident'
+    else if (pendingTrait) ui = 'cull'
+    else if (pendingGraft) ui = 'graft'
   }
 
   const wasAlive = state.alive
@@ -908,7 +918,13 @@ function frame(ms: number): void {
 }
 
 for (const ev of ['pagehide', 'visibilitychange']) {
-  window.addEventListener(ev, () => persist(clock.now(), true))
+  window.addEventListener(ev, () => {
+    persist(clock.now(), true)
+    // Ушли в фон — прибор замолкает. Играющая музыка из свёрнутого приложения
+    // это не «живой гриб», а забытый в кармане будильник.
+    if (document.hidden) audio.pause()
+    else audio.resume()
+  })
 }
 
 // Пробуем зазвучать сразу: если браузер разрешит (установленное приложение,

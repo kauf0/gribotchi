@@ -298,6 +298,7 @@ export const MANUAL = {
   figCull: 'Бланк выбраковки: мест три',
   figStrain: 'Удостоверение штамма',
   figSummary: 'Сводка и журнал наблюдений',
+  namedGraft: (name: string) => `${name} — только обменом`,
   moodHappy: 'Доволен',
   moodSad: 'Голоден',
   moodAway: 'Отвернулся',

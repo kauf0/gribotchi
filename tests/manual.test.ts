@@ -11,6 +11,9 @@ import { describe, expect, it } from 'vitest'
 
 import { SECTIONS, TRAIT_HINTS, FAMILY_NAMES, AXIS_NAMES } from '../src/content/manual'
 import { TRAITS, TRAIT_KEYS, type TraitFamily } from '../src/sim/traits'
+import { strainCounts } from '../src/sim/strain'
+import { NAMED } from '../src/sim/named'
+import { RANK_NAMES } from '../src/content/strings'
 import { TRAIT_NAMES } from '../src/content/strings'
 import * as B from '../src/sim/balance'
 
@@ -109,6 +112,42 @@ describe('числа в руководстве не расходятся с иг
     expect(all).toContain(`${Math.round(B.AWAY_ABOVE * 100)}%`)
     expect(all).toContain(String(B.FEED_COOLDOWN_MS / 60_000))
     expect(all).toContain(String(B.ABSENCE_WORTH_NOTING_MS / 3600_000))
+  })
+
+  it('честная пара чисел вместо одной: всего и своими руками', () => {
+    // Прежде руководство печатало одно число — 4060 — и тем прятало лучший
+    // факт игры: треть сочетаний недостижима в одиночку.
+    const all = SECTIONS.flatMap((s) => s.body).join(' ')
+    const counts = strainCounts(TRAIT_KEYS.map((k) => TRAITS[k].family))
+    expect(all).toContain(String(counts.total))
+    expect(all).toContain(String(counts.alone))
+    expect(all).toContain(String(counts.total - counts.alone))
+    expect(counts.alone).toBeLessThan(counts.total)
+  })
+
+  it('разделы называют настоящее число имён и недостижимых среди них', () => {
+    const all = SECTIONS.flatMap((s) => s.body).join(' ')
+    expect(all).toContain(String(NAMED.length))
+    expect(all).toContain(String(NAMED.filter((n) => n.graftOnly).length))
+  })
+
+  it('разряды перечислены все и с настоящими порогами высшего', () => {
+    const all = SECTIONS.flatMap((s) => s.body).join(' ')
+    for (const rank of B.RANKS) expect(all, rank.key).toContain(RANK_NAMES[rank.key])
+    const top = B.RANKS[B.RANKS.length - 1]
+    expect(all).toContain(String(top.strains))
+    expect(all).toContain(String(top.names))
+    expect(all).toContain(String(top.traits))
+  })
+
+  it('новые механики описаны, а не только упомянуты', () => {
+    // Раздел без своего текста — та же ложь, что и разошедшееся число:
+    // игрок откроет паспорт за объяснением и не найдёт его.
+    for (const id of ['imena', 'zadanie', 'reestr', 'razryad']) {
+      const section = SECTIONS.find((s) => s.id === id)
+      expect(section, id).toBeDefined()
+      expect(section!.body.join(' ').length, id).toBeGreaterThan(200)
+    }
   })
 
   it('в тексте нет забытых заглушек', () => {

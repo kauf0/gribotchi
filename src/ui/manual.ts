@@ -25,7 +25,8 @@ import { pourBlank, incidentBlank, cullBlank, strainBlank, summary } from '../vi
 import { createState, type GameState } from '../sim/state'
 import { TRAITS, TRAIT_KEYS, type TraitKey, type TraitFamily } from '../sim/traits'
 import { encodeStrain } from '../sim/strain'
-import { BRAND, MANUAL, TRAIT_NAMES } from '../content/strings'
+import { BRAND, MANUAL, TRAIT_NAMES, STRAIN_NAMES } from '../content/strings'
+import { NAMED } from '../sim/named'
 import {
   SECTIONS,
   TRAIT_HINTS,
@@ -157,6 +158,21 @@ function figureFor(kind: NonNullable<Section['figure']>): HTMLElement {
       return shot(blankShot(summary(sample({ generation: 3 }), 0)), MANUAL.figSummary)
     case 'traits':
       return traitTable()
+    case 'named': {
+      // Три имени: два обычных и одно недостижимое в одиночку — чтобы разница
+      // была видна, а не только описана. Выбираются ПО ПРИЗНАКУ graftOnly,
+      // а не по номеру в таблице: имена ещё будут добавляться.
+      const row = document.createElement('div')
+      row.className = 'm-row'
+      const plain = NAMED.filter((n) => !n.graftOnly).slice(0, 2)
+      const graft = NAMED.find((n) => n.graftOnly)
+      const shown = [...plain, ...(graft ? [graft] : [])]
+      for (const strain of shown) {
+        const name = STRAIN_NAMES[strain.key as keyof typeof STRAIN_NAMES]
+        row.append(shot(traitShot([...strain.traits]), strain.graftOnly ? MANUAL.namedGraft(name) : name, true))
+      }
+      return row
+    }
   }
 }
 

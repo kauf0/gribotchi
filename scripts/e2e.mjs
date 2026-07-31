@@ -967,6 +967,159 @@ async function main() {
       )
     }
 
+    // Реестр штаммов. Проверяем и разворот, и то, ради чего он затеян:
+    // задание на селекцию — единственный руль в игре, и берётся он только
+    // отсюда.
+    {
+      // Реестр засеян: у пустого рисовать нечего, и проверка силуэтов вышла
+      // бы пустой — «0 из 0» прошло бы как успех. Ключи именованных штаммов
+      // кладутся прямо в реестр отладочным параметром.
+      await cdp.send('Page.navigate', { url: `${URL}?t=4&bred=pharmacy,factory,dacha` })
+      await sleep(1800)
+
+      await evaluate(cdp, `document.querySelector('.registry-btn').click()`)
+      await sleep(900)
+
+      const reg = await evaluate(
+        cdp,
+        `(() => {
+          const sheet = document.querySelector('.registry__sheet')
+          if (!sheet) return { open: false }
+          const imgs = [...sheet.querySelectorAll('.r-crop img')]
+          return {
+            open: true,
+            names: sheet.querySelectorAll('.r-card').length,
+            own: sheet.querySelectorAll('.r-card--own').length,
+            takes: sheet.querySelectorAll('.r-take').length,
+            graft: sheet.querySelectorAll('.r-mark--graft').length,
+            drawn: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
+            figures: imgs.length,
+            overflows: sheet.scrollWidth > sheet.clientWidth + 1,
+            rank: sheet.querySelector('.r-rank__name')?.textContent ?? '',
+            totals: sheet.querySelector('.r-foot__totals')?.textContent ?? '',
+          }
+        })()`,
+      )
+      check('кнопка РЕЕСТР открывает разворот', reg.open)
+      check(
+        'видны все двадцать четыре имени',
+        reg.names === 24,
+        `карточек ${reg.names}`,
+      )
+      check(
+        'недостижимые в одиночку помечены',
+        reg.graft === 4,
+        `помечено ${reg.graft}`,
+      )
+      check('разряд назван, а не пропущен', reg.rank.length > 0, reg.rank)
+      check(
+        'внизу честная пара чисел, а не одно',
+        /4060/.test(reg.totals) && /2936/.test(reg.totals),
+        reg.totals,
+      )
+      check(
+        'силуэты нарисованы игрой',
+        reg.figures > 0 && reg.drawn === reg.figures,
+        `${reg.drawn} из ${reg.figures}`,
+      )
+      check(
+        'выведенное помечено занесённым',
+        reg.own === 3,
+        `занесено ${reg.own}`,
+      )
+      check('разворот не уезжает вбок', !reg.overflows)
+
+      // Задание: взять, увидеть отметку, убедиться, что оно попало
+      // в сохранение, — иначе руль исчезнет при перезагрузке.
+      await evaluate(cdp, `document.querySelector('.r-take').click()`)
+      await sleep(600)
+      const taken = await evaluate(
+        cdp,
+        `(() => {
+          const sheet = document.querySelector('.registry__sheet')
+          return {
+            marked: sheet.querySelectorAll('.r-card--target').length,
+            saved: JSON.parse(localStorage.getItem('gribochi.save.v1') ?? '{}').target ?? null,
+          }
+        })()`,
+      )
+      check('задание берётся из реестра', taken.marked === 1, `отмечено ${taken.marked}`)
+      check('задание попадает в сохранение', taken.saved !== null, `задание: ${taken.saved}`)
+
+      await evaluate(cdp, `document.querySelector('.r-take--on').click()`)
+      await sleep(600)
+      const dropped = await evaluate(
+        cdp,
+        `JSON.parse(localStorage.getItem('gribochi.save.v1') ?? '{}').target ?? null`,
+      )
+      check('задание снимается тем же нажатием', dropped === null)
+
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await sleep(500)
+      check('Esc закрывает реестр', !(await evaluate(cdp, `!!document.querySelector('.registry')`)))
+
+      await evaluate(cdp, `document.querySelector('.registry-btn').click()`)
+      await sleep(700)
+      await evaluate(cdp, `document.querySelector('.registry').click()`)
+      await sleep(500)
+      check(
+        'щелчок мимо разворота закрывает его',
+        !(await evaluate(cdp, `!!document.querySelector('.registry')`)),
+      )
+    }
+
+    // Шильдик под прибором: одна пластина на три надписи. На телефоне она
+    // обязана помещаться целиком — раньше на её месте были таблетки, и они
+    // разъезжались по ширине.
+    {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 360,
+        height: 780,
+        deviceScaleFactor: 2,
+        mobile: true,
+      })
+      await cdp.send('Page.navigate', { url: `${URL}?t=4` })
+      await sleep(1600)
+
+      const plate = await evaluate(
+        cdp,
+        `(() => {
+          const tray = document.querySelector('.tray')
+          const r = tray.getBoundingClientRect()
+          const leave = document.querySelector('.leave')
+          return {
+            fits: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            buttons: tray.querySelectorAll('button').length,
+            // На узком экране показывается короткая надпись, длинная спрятана.
+            label: leave.innerText.trim(),
+            heights: [...tray.querySelectorAll('button')].map((b) =>
+              Math.round(b.getBoundingClientRect().height),
+            ),
+          }
+        })()`,
+      )
+      check(
+        'шильдик помещается в экран телефона',
+        plate.fits,
+        `${plate.width}×${plate.height} в 360`,
+      )
+      check('на шильдике три надписи', plate.buttons === 3, `надписей ${plate.buttons}`)
+      check(
+        'секции одной высоты — ради этого шильдик и делался',
+        new Set(plate.heights).size === 1,
+        plate.heights.join(' · '),
+      )
+      check(
+        'на узком экране надпись короткая',
+        plate.label === 'ОТОЙТИ',
+        `«${plate.label}»`,
+      )
+      await cdp.send('Emulation.clearDeviceMetricsOverride')
+    }
+
     // Предложение установки. В разработке его можно вызвать параметром —
     // beforeinstallprompt в headless-браузере не приходит, а проверить, что
     // надпись помещается в телефон, надо.

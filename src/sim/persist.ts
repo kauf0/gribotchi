@@ -10,7 +10,7 @@ import { advance } from './tick'
 import { createState, emptyPoured, SAVE_VERSION, type GameState } from './state'
 import { trim, type JournalEntry, type Tally, type TallyKey } from './journal'
 import { TRAIT_KEYS, TRAIT_SLOTS, type TraitKey } from './traits'
-import { decodeStrain } from './strain'
+import { decodeStrain, strainKey } from './strain'
 import { CLEAN_STRESS_MS, TEA_KEYS, type TeaKey } from './balance'
 
 const KEY = 'gribochi.save.v1'
@@ -164,11 +164,29 @@ function migrate(parsed: unknown, now: number): GameState | null {
     ? (raw.declined.filter((k) => TRAIT_KEYS.includes(k as TraitKey)) as TraitKey[])
     : []
   merged.crossings = whole(raw.crossings)
-  // Коды с негодной контрольной суммой отбрасываем: чужой формат в реестре
-  // хуже пустого реестра.
-  merged.bred = Array.isArray(raw.bred)
-    ? [...new Set(raw.bred.filter((c) => typeof c === 'string' && decodeStrain(c) !== null))]
+  /**
+   * Реестр пересобирается по ключу набора признаков.
+   *
+   * До этого выпуска в `bred` лежал обменный код, куда упаковано поколение:
+   * один и тот же штамм, разлитый в третьем и пятом поколении, попадал туда
+   * дважды. Разбираем каждую запись и складываем заново без поколения —
+   * повторы схлопываются. Коды с негодной контрольной суммой отбрасываем:
+   * чужой формат в реестре хуже пустого реестра.
+   */
+  const decoded = Array.isArray(raw.bred)
+    ? raw.bred.map((c) => (typeof c === 'string' ? decodeStrain(c) : null)).filter((x) => x !== null)
     : []
+  merged.bred = [...new Set(decoded.map((strain) => strainKey(strain.traits)))]
+
+  /**
+   * Розливы. Поля до этого выпуска не было, но число, которое игрок видел,
+   * известно: это прежняя длина `bred`. Ставим его — иначе схлопывание
+   * повторов выглядело бы так, будто у владельца отняли выведенное.
+   */
+  merged.bottlings =
+    typeof raw.bottlings === 'number' && Number.isFinite(raw.bottlings) && raw.bottlings > 0
+      ? Math.floor(raw.bottlings)
+      : decoded.length
   merged.offered =
     typeof raw.offered === 'string' && decodeStrain(raw.offered) !== null ? raw.offered : null
 

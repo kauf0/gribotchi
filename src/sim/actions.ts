@@ -5,7 +5,7 @@
 
 import { clamp01, createState, type GameState } from './state'
 import { bump, record, type Grade, type JournalEntry } from './journal'
-import { encodeStrain } from './strain'
+import { strainKey } from './strain'
 import { canBottle, canClean, canFeed, dayOf, diagnose, dominantTea } from './derive'
 import { MSG } from '../content/strings'
 import * as B from './balance'
@@ -127,7 +127,7 @@ export function nextGeneration(s: GameState, now: number): ActionResult {
     // Новая закваска: признаки объекта уходят вместе с ним, но всё, что про
     // владельца и род — реестр, рекорд, полученная закваска — остаётся.
     return {
-      state: createState(now, { generation: 1, ...ownersKeep(registered(noted)) }),
+      state: createState(now, { generation: 1, ...ownersKeep(noted) }),
       msg: MSG.startedOver,
       effect: 'none',
     }
@@ -145,6 +145,7 @@ export function nextGeneration(s: GameState, now: number): ActionResult {
  */
 const ownersKeep = (s: GameState) => ({
   journal: s.journal,
+  bottlings: s.bottlings,
   longestAwayMs: s.longestAwayMs,
   lastIncidentAt: s.lastIncidentAt,
   crossings: s.crossings,
@@ -153,13 +154,23 @@ const ownersKeep = (s: GameState) => ({
 })
 
 /**
- * Занести доведённый штамм в реестр владельца. Только полный: гриб без
- * признаков — ещё не штамм, и в реестре ему делать нечего.
+ * Записать разлитую партию: счёт розливов плюс штамм в реестр.
+ *
+ * Зовётся ТОЛЬКО из розлива. Раньше это делала и смена поколения после гибели,
+ * но погибший объект никто не доводил до партии: так штаммы копились бы гибелью
+ * — вчетверо быстрее, чем выращиванием, — и «выведено штаммов» перестало бы
+ * что-либо значить.
+ *
+ * Гриб без признаков в реестр не идёт: это ещё не штамм. Но розлив ему
+ * засчитывается — труд был.
  */
 function registered(s: GameState): GameState {
-  if (s.traits.length === 0) return s
-  const code = encodeStrain({ traits: s.traits, generation: s.generation, crossings: s.crossings })
-  return s.bred.includes(code) ? s : { ...s, bred: [...s.bred, code] }
+  const bottled = { ...s, bottlings: s.bottlings + 1 }
+  if (s.traits.length === 0) return bottled
+  // Ключ без поколения: один набор признаков — один штамм, сколько бы раз
+  // его ни разливали.
+  const key = strainKey(s.traits)
+  return bottled.bred.includes(key) ? bottled : { ...bottled, bred: [...bottled.bred, key] }
 }
 
 /**

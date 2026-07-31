@@ -102,8 +102,18 @@ export type GameState = {
    */
   crossings: number
 
-  /** Коды выведенных штаммов. Реестр владельца — наследуется навсегда. */
+  /**
+   * Ключи выведенных штаммов — по набору признаков, без поколения.
+   * Реестр владельца, наследуется навсегда.
+   */
   bred: string[]
+
+  /**
+   * Сколько партий разлито за всё время. Отдельно от `bred`, потому что тот
+   * считает РАЗНЫЕ штаммы: один и тот же набор можно вывести хоть десять раз,
+   * и это по-прежнему один штамм, но десять розливов.
+   */
+  bottlings: number
 
   /**
    * Полученная от другого игрока закваска: код штамма ждёт смены поколения.
@@ -122,6 +132,7 @@ export type NewLifeOpts = {
   traits?: TraitKey[]
   crossings?: number
   bred?: string[]
+  bottlings?: number
   offered?: string | null
 }
 
@@ -159,6 +170,7 @@ export function createState(now: number, opts: NewLifeOpts = {}): GameState {
     declined: [],
     crossings: opts.crossings ?? 0,
     bred: opts.bred ?? [],
+    bottlings: opts.bottlings ?? 0,
     offered: opts.offered ?? null,
   }
 }

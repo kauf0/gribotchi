@@ -145,5 +145,42 @@ export function decodeStrain(code: unknown): Strain | null {
   return { traits, generation, crossings }
 }
 
+/**
+ * Ключ штамма для реестра: тот же код, но без поколения и скрещиваний.
+ *
+ * Обменный код намеренно несёт поколение — при передаче другому игроку это
+ * уместно. Но для реестра оно вредно: один и тот же набор признаков, разлитый
+ * в третьем и в пятом поколении, давал бы РАЗНЫЕ коды, и «выведено штаммов»
+ * считало бы повторные розливы одного штамма за разные.
+ */
+export const strainKey = (traits: TraitKey[]): string =>
+  encodeStrain({ traits, generation: 0, crossings: 0 })
+
+/**
+ * Сколько троек можно собрать своими руками.
+ *
+ * Внутри семьи признаки взаимоисключающие, поэтому годятся только тройки
+ * из РАЗНЫХ семей — их 2936 из 4060 всех сочетаний. Остальные 1124 содержат
+ * два признака одной семьи и достижимы только пересадкой чужой закваски:
+ * именно ради этого обмен и затевался.
+ *
+ * Считается, а не пишется: добавят признак — число поедет само.
+ */
+export function strainCounts(families: string[]): { total: number; alone: number } {
+  const n = families.length
+  const sizes = new Map<string, number>()
+  for (const f of families) sizes.set(f, (sizes.get(f) ?? 0) + 1)
+
+  const total = (n * (n - 1) * (n - 2)) / 6
+  const perFamily = [...sizes.values()]
+  let alone = 0
+  for (let i = 0; i < perFamily.length; i++)
+    for (let j = i + 1; j < perFamily.length; j++)
+      for (let k = j + 1; k < perFamily.length; k++)
+        alone += perFamily[i] * perFamily[j] * perFamily[k]
+
+  return { total, alone }
+}
+
 /** Код в том виде, в каком его показывают: 7K3M-9QXA. */
 export const prettyCode = (code: string): string => `${code.slice(0, 4)}-${code.slice(4)}`

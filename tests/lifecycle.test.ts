@@ -13,7 +13,8 @@ import { canBottle, dayOf, dominantTea, moodOf, overdueDays } from '../src/sim/d
 import { load, save } from '../src/sim/persist'
 import { journalLine } from '../src/view/reports'
 import { incidentFor } from '../src/sim/incidents'
-import { encodeStrain } from '../src/sim/strain'
+import { encodeStrain, strainKey } from '../src/sim/strain'
+import type { TraitKey } from '../src/sim/traits'
 import * as B from '../src/sim/balance'
 
 const T0 = 1_700_000_000_000
@@ -368,7 +369,9 @@ describe('сохранение', () => {
     expect(back.tally).toEqual({ overfed: 4, clean: 9 })
     expect(back.maxMold).toBeCloseTo(0.81, 10)
     expect(back.crossings).toBe(2)
-    expect(back.bred).toEqual([code])
+    // Реестр хранит ключ по набору признаков, а не обменный код: поколение
+    // в него не входит, иначе один штамм считался бы за несколько.
+    expect(back.bred).toEqual([strainKey(['wiry'])])
     expect(back.offered).toBe(code)
   })
 
@@ -390,8 +393,57 @@ describe('сохранение', () => {
     expect(back.state.traits).toEqual(['wiry', 'healing', 'devoted'])
     expect(back.state.tally).toEqual({ 'night-pour': 2 })
     expect(back.state.maxMold).toBe(back.state.mold)
-    expect(back.state.bred).toEqual([good])
+    expect(back.state.bred).toEqual([strainKey(['wiry'])])
     expect(back.state.offered).toBe(null)
+  })
+
+  it('один штамм, разлитый в разных поколениях, в реестре один', () => {
+    // До этого выпуска в реестр клался обменный код с поколением внутри,
+    // и повторный розлив того же набора считался за новый штамм.
+    const store = memory()
+    const traits: TraitKey[] = ['wiry', 'healing', 'devoted']
+    const old = { ...createState(T0) } as Record<string, unknown>
+    old.bred = [
+      encodeStrain({ traits, generation: 3, crossings: 0 }),
+      encodeStrain({ traits, generation: 5, crossings: 1 }),
+      encodeStrain({ traits: ['stout'], generation: 2, crossings: 0 }),
+    ]
+    store.setItem('gribochi.save.v1', JSON.stringify(old))
+
+    const back = load(T0, store).state
+    expect(back.bred).toEqual([strainKey(traits), strainKey(['stout'])])
+  })
+
+  it('схлопывание повторов не отнимает у владельца видимое число', () => {
+    // Игрок видел «выведено 3». После починки разных штаммов оказывается два,
+    // и если бы тройка просто исчезла, обновление выглядело бы как кража.
+    // Поэтому прежнее число переезжает в счётчик розливов.
+    const store = memory()
+    const traits: TraitKey[] = ['wiry', 'healing', 'devoted']
+    const old = { ...createState(T0) } as Record<string, unknown>
+    old.bred = [
+      encodeStrain({ traits, generation: 3, crossings: 0 }),
+      encodeStrain({ traits, generation: 5, crossings: 0 }),
+      encodeStrain({ traits: ['stout'], generation: 2, crossings: 0 }),
+    ]
+    store.setItem('gribochi.save.v1', JSON.stringify(old))
+
+    const back = load(T0, store).state
+    expect(back.bred).toHaveLength(2)
+    expect(back.bottlings).toBe(3)
+  })
+
+  it('розлив считается даже у гриба без признаков', () => {
+    // В реестр он не попадёт — это ещё не штамм, — но труд засчитан.
+    const s = { ...createState(T0), growth: 1, mold: 0.05 }
+    const after = bottle(s, T0).state
+    expect(after.bred).toEqual([])
+    expect(after.bottlings).toBe(1)
+  })
+
+  it('счёт розливов переживает смерть и новую закваску', () => {
+    const dead = { ...createState(T0), alive: false, growth: 0.1, deathDay: 9, bottlings: 4 }
+    expect(nextGeneration(dead, T0).state.bottlings).toBe(4)
   })
 
   it('обрезанное сохранение отбрасывается целиком', () => {

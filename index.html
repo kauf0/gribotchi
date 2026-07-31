@@ -18,9 +18,13 @@
       о них только когда доберётся до fillText, то есть после загрузки и
       разбора всего модуля игры. Подмножества корпуса (PT Sans Narrow, ~140 КБ)
       здесь намеренно НЕ перечислены: экрану они не нужны.
+
+      Пути ОТНОСИТЕЛЬНЫЕ. На itch игра лежит во врезке в подпапке, на GitHub
+      Pages — в /gribotchi/; абсолютный адрес там указывает в корень чужого
+      домена и не находится. Ровно на этом проект уже горел со шрифтами.
     -->
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/handjet-1.woff2" />
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/dotgothic16-0.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="./fonts/handjet-1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="./fonts/dotgothic16-0.woff2" />
   </head>
   <body>
     <div id="app"></div>

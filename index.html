@@ -12,6 +12,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link rel="stylesheet" href="/fonts/fonts.css" />
+    <!--
+      Два подмножества, без которых нечем рисовать первый кадр: кириллица
+      Handjet и каны DotGothic16, вместе около 6 КБ. Без preload браузер узнаёт
+      о них только когда доберётся до fillText, то есть после загрузки и
+      разбора всего модуля игры. Подмножества корпуса (PT Sans Narrow, ~140 КБ)
+      здесь намеренно НЕ перечислены: экрану они не нужны.
+    -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/handjet-1.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/dotgothic16-0.woff2" />
   </head>
   <body>
     <div id="app"></div>

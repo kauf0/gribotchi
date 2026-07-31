@@ -10,7 +10,7 @@
  */
 
 import { GEOM, SKINS, type SkinKey } from '../content/tokens'
-import { BRAND, BUTTONS, INSTALL, LEAVE, MANUAL } from '../content/strings'
+import { BRAND, BUTTONS, INSTALL, LEAVE, LEAVE_SHORT, MANUAL, REGISTRY } from '../content/strings'
 import type { InstallOffer } from '../ui/install'
 import { W, H } from './lcd'
 
@@ -96,10 +96,12 @@ export type ShellHandlers = {
   onInstall: () => void
   /** Открыть паспорт изделия. */
   onManual: () => void
+  /** Открыть реестр штаммов. */
+  onRegistry: () => void
 }
 
 export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
-  const { onPress, onSpeaker, onLeave, onInstall, onManual } = handlers
+  const { onPress, onSpeaker, onLeave, onInstall, onManual, onRegistry } = handlers
   const room = el('div', 'room')
   room.append(el('div', 'room__cloth'))
 
@@ -204,25 +206,39 @@ export function mountShell(root: HTMLElement, handlers: ShellHandlers): Shell {
   // игрока, а не функция игрушки. Заодно на телефоне, где itch открывает игру
   // во весь экран, она оказывается единственным очевидным выходом.
   /*
-   * Две надписи под прибором в общем ряду. Класс `leave` сохранён намеренно:
-   * на него завязаны e2e и генератор витринных кадров, который убирает
-   * кнопку из обложек.
+   * Один шильдик на три надписи — как маркировка на задней стенке советской
+   * техники: ровная высота, одинаковые поля, волосяные линейки между
+   * секциями. Раньше здесь лежали отдельные таблетки; на телефоне они
+   * разъезжались по ширине и спорили друг с другом размером.
+   *
+   * Классы `pasport` и `leave` сохранены намеренно: на них завязаны e2e
+   * и генератор витринных кадров. Класс `pasport`, а не `manual`, потому что
+   * последний занят самим оверлеем брошюры.
    */
   const tray = el('div', 'tray')
 
-  // Класс `pasport`, а не `manual`: последний занят самим оверлеем брошюры,
-  // и общее правило таблетки красило её своей прозрачностью.
   const manual = el('button', 'pasport')
   manual.type = 'button'
   manual.textContent = MANUAL.open
   manual.addEventListener('click', onManual)
 
+  const registry = el('button', 'registry-btn')
+  registry.type = 'button'
+  registry.textContent = REGISTRY.open
+  registry.addEventListener('click', onRegistry)
+
   const leave = el('button', 'leave')
   leave.type = 'button'
-  leave.textContent = LEAVE
+  // Обе надписи лежат в разметке, а выбирает между ними медиазапрос:
+  // на широком экране «ОТОЙТИ ПО ДЕЛАМ», на узком просто «ОТОЙТИ».
+  const leaveLong = el('span', 'leave__long')
+  leaveLong.textContent = LEAVE
+  const leaveShort = el('span', 'leave__short')
+  leaveShort.textContent = LEAVE_SHORT
+  leave.append(leaveLong, leaveShort)
   leave.addEventListener('click', onLeave)
 
-  tray.append(manual, leave)
+  tray.append(manual, registry, leave)
 
   // Предложение установки — сверху, чтобы не спорить с «отойти по делам»
   // внизу. Появляется редко и один раз, поэтому места под него не резервируем.

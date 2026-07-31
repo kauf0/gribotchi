@@ -34,12 +34,13 @@ import { reactionTo, type Signals } from './ui/reactions'
 import { observe, noteReturn } from './sim/observations'
 import { incidentFor, answer, type IncidentKind } from './sim/incidents'
 import { earnedTraits, cullOrder, TRAIT_SLOTS, type TraitKey } from './sim/traits'
-import { namedByKey } from './sim/named'
+import { namedByKey, namedKey } from './sim/named'
 import { encodeStrain, decodeStrain } from './sim/strain'
 import { copyText, readText, onPaste } from './ui/clipboard'
 import { recordAll, type JournalKind } from './sim/journal'
 import { leaveAction, LEAVE_MESSAGE, type LeaveEnv } from './ui/leave'
 import { openManual, closeManual, isManualOpen } from './ui/manual'
+import { openRegistry, closeRegistry, isRegistryOpen } from './ui/registry'
 import { installOffer, DISMISSED_KEY, type InstallOffer } from './ui/install'
 import { demoFrameAt } from './demo/timeline'
 
@@ -244,7 +245,30 @@ const shell = mountShell(root, {
       lastInputAt = Date.now()
     })
   },
+  onRegistry: () => {
+    lastInputAt = Date.now()
+    showRegistry()
+  },
 })
+
+/**
+ * Реестр. Отметка задания меняет состояние, поэтому разворот пересобирается
+ * заново: он и так строится при каждом открытии, а держать в нём живую
+ * подписку на состояние ради одной кнопки — лишний узел.
+ */
+function showRegistry(): void {
+  openRegistry({
+    state,
+    onTarget: (key) => {
+      state = { ...state, target: key }
+      persist(clock.now(), true)
+      showRegistry()
+    },
+    onClose: () => {
+      lastInputAt = Date.now()
+    },
+  })
+}
 const lcd = new Lcd(shell.canvas, skin)
 shell.setMuted(!audio.on)
 
@@ -340,6 +364,15 @@ if (import.meta.env.DEV) {
   }
   if (seed.open === 'report') ui = 'report'
   if (seed.pasport) openManual(__APP_VERSION__)
+  // Реестр и разряд считаются из выведенного, а разлить два десятка партий
+  // ради снимка невозможно — сеем прямо ключами именованных штаммов.
+  if (seed.bred) {
+    const keys = seed.bred.map((k) => namedByKey(k)).filter((n) => n !== null)
+    state.bred = keys.map((n) => namedKey(n))
+    state.bottlings = state.bred.length
+  }
+  if (seed.target) state.target = namedByKey(seed.target)?.key ?? null
+  if (seed.reestr) showRegistry()
   if (seed.traits) {
     state.traits = seed.traits.filter((k) => k in TRAIT_NAMES) as TraitKey[]
   }
@@ -391,7 +424,10 @@ let leftAt = 0
  * работает, поэтому разбор обстановки оставлен.
  */
 function leaveForNow(): void {
+  // Оба разворота лежат поверх комнаты: уйти, оставив их открытыми, значило бы
+  // вернуться к выключенному прибору из-под бумаги.
   closeManual()
+  closeRegistry()
   const now = clock.now()
   persist(now, true)
 
@@ -881,7 +917,7 @@ function frame(ms: number): void {
   const idle = Date.now() - lastInputAt
   // Открытый паспорт — тоже занятие: подсовывать ролик поверх чтения незачем.
   const idleEnough =
-    idle > idleBeforeAttract && !document.hidden && phase === 'game' && !isManualOpen()
+    idle > idleBeforeAttract && !document.hidden && phase === 'game' && !isManualOpen() && !isRegistryOpen()
   if (attractSince === null && (forceAttract || idleEnough)) {
     attractSince = 0
   }

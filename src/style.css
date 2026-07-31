@@ -348,10 +348,14 @@ body {
  */
 /* Ряд надписей под прибором: паспорт и «отойти по делам». */
 /* Паспорт тише соседа: его открывают раз в жизни, а уходят — постоянно. */
-.pasport {
-  opacity: 0.34;
-}
-
+/*
+ * Шильдик под прибором: одна пластина на три надписи с волосяными линейками
+ * между секциями — как маркировка на задней стенке советской техники.
+ *
+ * Раньше здесь лежали отдельные таблетки. На телефоне они разъезжались:
+ * у каждой своя ширина от длины слова, и ряд выглядел случайным. Общая рамка
+ * задаёт одну высоту и одинаковые поля, а различает секции только линейка.
+ */
 .tray {
   position: fixed;
   left: 50%;
@@ -359,37 +363,82 @@ body {
   transform: translateX(-50%);
   z-index: 15;
   display: flex;
-  gap: 8px;
+  align-items: stretch;
   max-width: calc(100vw - 16px);
+  border: 1px solid rgba(217, 201, 163, 0.22);
+  border-radius: 4px;
+  background: rgba(12, 13, 8, 0.45);
+  overflow: hidden;
 }
 
 .leave,
+.registry-btn,
 .pasport {
-  padding: 7px 16px;
-  border: 1px solid rgba(217, 201, 163, 0.22);
-  border-radius: 999px;
-  background: rgba(12, 13, 8, 0.45);
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 7px 14px;
+  border: 0;
+  background: none;
   color: #d9c9a3;
   font-family: 'PT Sans Narrow', sans-serif;
   font-size: 15px;
   letter-spacing: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   opacity: 0.5;
   cursor: pointer;
   touch-action: manipulation;
   transition: opacity 0.15s;
 }
 
+/* Линейка — не отступ: секции обязаны примыкать друг к другу вплотную. */
+.registry-btn,
+.leave {
+  border-left: 1px solid rgba(217, 201, 163, 0.18);
+}
+
 .leave:hover,
 .leave:focus-visible,
+.registry-btn:hover,
+.registry-btn:focus-visible,
 .pasport:hover,
 .pasport:focus-visible {
   opacity: 1;
 }
 
 .leave:focus-visible,
+.registry-btn:focus-visible,
 .pasport:focus-visible {
   outline: 2px solid #f0e4cd;
-  outline-offset: 3px;
+  outline-offset: -3px;
+}
+
+/*
+ * Длинная надпись на широком экране, короткая на узком. Обе лежат в разметке,
+ * а выбирает медиазапрос: ветвление в коде пришлось бы пересчитывать при
+ * повороте телефона.
+ */
+.leave__short {
+  display: none;
+}
+
+@media (max-width: 430px) {
+  .leave,
+  .registry-btn,
+  .pasport {
+    padding: 7px 10px;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .leave__long {
+    display: none;
+  }
+
+  .leave__short {
+    display: inline;
+  }
 }
 
 .install {

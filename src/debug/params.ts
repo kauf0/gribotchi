@@ -55,6 +55,16 @@ export type UrlSeed = {
    * пока они закрепятся сами, никакой съёмки не хватит.
    */
   traits?: string[]
+  /** Открыть реестр штаммов сразу: ?reestr=1. */
+  reestr?: boolean
+  /**
+   * Засеять реестр именованными штаммами: ?bred=pharmacy,factory. Разряд
+   * и половина реестра считаются из выведенного, а вывести два десятка
+   * штаммов ради одного снимка нельзя.
+   */
+  bred?: string[]
+  /** Взятое задание на селекцию: ?zadanie=lab. */
+  target?: string
   /**
    * Через сколько секунд простоя прибор сам показывает ролик: ?idle=3.
    * В игре это минута, и ждать её в каждом прогоне теста никто не станет.
@@ -116,8 +126,12 @@ export function readUrlSeed(search: string): UrlSeed {
   const attract = q.has('attract') ? (num(q, 'attract') ?? 0) : undefined
   const idle = num(q, 'idle')
   const pasport = flag(q, 'pasport')
+  const reestr = flag(q, 'reestr')
   const traitsRaw = q.get('traits')
   const traits = traitsRaw ? traitsRaw.split(',').filter(Boolean) : undefined
+  const bredRaw = q.get('bred')
+  const bred = bredRaw ? bredRaw.split(',').filter(Boolean) : undefined
+  const target = q.get('zadanie') ?? undefined
   const installRaw = q.get('install')
   const install =
     installRaw === 'prompt' ? ('prompt' as const) : installRaw === 'ios' ? ('ios-hint' as const) : undefined
@@ -130,7 +144,10 @@ export function readUrlSeed(search: string): UrlSeed {
     sim: Object.keys(sim).length > 0 ? sim : undefined,
     open,
     pasport,
+    reestr,
     traits,
+    bred,
+    target,
     install,
     attract,
     idleBeforeAttract: idle !== undefined && idle >= 0 ? idle * 1000 : undefined,

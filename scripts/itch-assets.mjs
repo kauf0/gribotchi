@@ -278,10 +278,14 @@ async function shoot(shot) {
     await cdp.send('Runtime.evaluate', {
       expression: `document.querySelector('.dbg')?.remove(); document.querySelector('.install')?.remove()`,
     })
-    // На обложке кнопка «отойти по делам» лишняя: это орган управления,
-    // а витрина показывает игру. В скриншотах она остаётся — там честно.
+    // На обложке шильдик лишний: это орган управления, а витрина показывает
+    // игру. В скриншотах он остаётся — там честно.
+    //
+    // Убирается ВЕСЬ шильдик, а не одна секция: с версии 0.5.0 «отойти»,
+    // «паспорт» и «реестр» лежат в общей рамке, и удаление одной кнопки
+    // оставило бы на обложке осиротевшую пластину с висящей линейкой.
     if (shot.hideLeave) {
-      await cdp.send('Runtime.evaluate', { expression: `document.querySelector('.leave')?.remove()` })
+      await cdp.send('Runtime.evaluate', { expression: `document.querySelector('.tray')?.remove()` })
     }
     await sleep(400)
 
